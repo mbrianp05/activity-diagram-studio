@@ -25,7 +25,7 @@
       <div class="topbar-actions">
         <button id="btn-undo" class="btn icon" title="Deshacer (Ctrl+Z)" aria-label="Deshacer"><svg viewBox="0 0 24 24"
             fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 9h10a6 6 0 0 1 0 12h-7" />
+            <path d="M4 9h10a6 6 0 0   1 0 12h-7" />
             <path d="M8 5l-4 4 4 4" />
           </svg></button>
         <button id="btn-redo" class="btn icon" title="Rehacer (Ctrl+Y)" aria-label="Rehacer"><svg viewBox="0 0 24 24"
@@ -91,11 +91,6 @@
               <circle cx="22" cy="12" r="10" />
               <circle cx="22" cy="12" r="6" class="dot" />
             </svg></button></li>
-        <li><button class="tool" data-tool="stop" data-shape="stop" title="Punto muerto: el flujo se detiene ahí (P)" aria-label="Punto muerto">
-            <svg viewBox="0 0 44 24">
-              <circle cx="22" cy="12" r="9" />
-              <path d="M16 17 28 7" />
-            </svg></button></li>
         <li><button class="tool" data-tool="activity" data-shape="activity" title="Acción (A)" aria-label="Acción">
             <svg viewBox="0 0 44 28">
               <rect x="2" y="3" width="40" height="22" rx="3" />
@@ -124,11 +119,19 @@
               <rect x="2" y="3" width="40" height="26" rx="0" />
             </svg></button></li>
         <li><button class="tool" data-tool="connect" data-shape="arrow"
-            title="Conectar (C): arrastra desde una bolita hasta otra; el clic derecho pone puntos de giro"
+            title="Conectar dos nodos (C): arrastra desde una bolita hasta otra; clic derecho para poner puntos de giro"
             aria-label="Conectar">
             <svg viewBox="0 0 44 24">
               <path d="M4 12h30" />
               <path d="M28 6l8 6-8 6" />
+            </svg></button></li>
+        <li><button class="tool" data-tool="route" data-shape="route"
+            title="Recorrido del flujo (T): clic en la flecha para añadir un giro, arrastra los puntos, clic derecho para quitar uno"
+            aria-label="Recorrido">
+            <svg viewBox="0 0 44 24">
+              <path d="M5 18V8h14v10h20" />
+              <circle cx="19" cy="8" r="2.6" />
+              <circle cx="19" cy="18" r="2.6" />
             </svg></button></li>
         <li><button class="tool" data-tool="delete" data-shape="trash" title="Eliminar (X)" aria-label="Eliminar">
             <svg viewBox="0 0 24 24">

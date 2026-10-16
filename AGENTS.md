@@ -48,7 +48,8 @@ Dependencias: `routing.js` no importa nada del DOM salvo constantes; `model.js` 
 ## Invariantes geométricos
 
 - `decision`, `start`, `end` y `stop` se fuerzan a cuadrado en `createNode`, al cambiar tipo en el inspector y en `deserialize` (migración de archivos antiguos). `start`/`end` se limitan a `DOT_MAX = 28`.
-- Lane = banda horizontal. `n.lane` es **explícito**, no se recalcula por posición: al redimensionar, reordenar o borrar carriles usa `shiftLanes` / `swapLanes` / `removeLaneAt` (model.js), que mueven los nodos para que ninguno quede fuera de su banda. `assignLanes` sólo para diagramas nuevos o al arrastrar un nodo. La cabecera de carril ocupa `LANE_HEADER = 190` px a la izquierda.
+- Lane = banda horizontal. `n.lane` es **explícito**, no se recalcula por posición: al redimensionar, reordenar o borrar carriles usa `shiftLanes` / `swapLanes` / `removeLaneAt` (model.js), que mueven los nodos para que ninguno quede fuera de su banda. `assignLanes` sólo para diagramas nuevos o al arrastrar un nodo.
+- La cabecera de carril es una **barra vertical fina de `LANE_HEADER = 40` px** pegada al borde izquierdo, con el nombre del actor girado 90º (`fitLaneName` lo recorta al alto de su banda). Ese ancho es además el margen que `interact.js:snapSpot` no deja pisar. El borde inferior de la barra (`LANE_GRIP = 12` px, `data-lane-resize`) redimensiona el carril y se elimina al exportar. No reintroduzcas la barra ancha con el texto en horizontal.
 - Snap a rejilla: `GRID = 8` en `interact.js`, pero el patrón visible en `index.html` es 24/120. Doble clic en `#grid-rect` alterna el snap.
 
 ### Las flechas las dibuja el usuario (no hay trazado automático)

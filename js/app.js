@@ -7,10 +7,11 @@
 import {
   createDiagram, createNode, createEdge, sampleDiagram, serialize, deserialize,
   nodeById, edgeById, outEdges, inEdges, NODE_TYPES,
-  bounds, laneIndexAt, addNode, addEdge, removeNode, removeEdge, DOT_MAX,
+  bounds, laneIndexAt, addNode, addEdge, removeNode, removeEdge, dotMax,
   swapLanes, removeLaneAt, copyGroup, pasteGroup, groupBounds, freeSpot,
 } from './model.js';
 import { SIDES } from './routing.js';
+import { planAlign, planDistribute } from './align.js';
 import { Renderer, LANE_HEADER } from './render.js';
 import { Interaction } from './interact.js';
 import { validate, summary } from './validate.js';
@@ -23,6 +24,27 @@ const STORAGE_KEY = 'activity-diagram-studio/v1';
 const EXTRA_TOOLS = { connect: 'Conectar', route: 'Recorrido', delete: 'Eliminar' };
 /** Rótulos de las bolitas de conexión. */
 const SIDE_LABEL = { left: 'Izquierda', right: 'Derecha', top: 'Arriba', bottom: 'Abajo' };
+
+/** Botones de alinear/repartir del inspector: iconos y texto explicativo. */
+const ALIGN_BUTTONS = [
+  ['left', 'Alinear a la izquierda', '<path d="M4 3v18" /><rect x="7" y="6" width="12" height="5" /><rect x="7" y="13" width="8" height="5" />'],
+  ['centerX', 'Centrar horizontalmente', '<path d="M12 3v18" /><rect x="4" y="6" width="16" height="5" /><rect x="7" y="13" width="10" height="5" />'],
+  ['right', 'Alinear a la derecha', '<path d="M20 3v18" /><rect x="5" y="6" width="12" height="5" /><rect x="9" y="13" width="8" height="5" />'],
+  ['top', 'Alinear arriba', '<path d="M3 4h18" /><rect x="6" y="7" width="5" height="12" /><rect x="13" y="7" width="5" height="8" />'],
+  ['centerY', 'Centrar verticalmente', '<path d="M3 12h18" /><rect x="6" y="4" width="5" height="16" /><rect x="13" y="7" width="5" height="10" />'],
+  ['bottom', 'Alinear abajo', '<path d="M3 20h18" /><rect x="6" y="5" width="5" height="12" /><rect x="13" y="9" width="5" height="8" />'],
+];
+const DIST_BUTTONS = [
+  ['x', 'Repartir en horizontal (3 nodos o más)', '<path d="M4 3v18" /><path d="M20 3v18" /><rect x="8" y="7" width="3" height="10" /><rect x="13" y="7" width="3" height="10" />'],
+  ['y', 'Repartir en vertical (3 nodos o más)', '<path d="M3 4h18" /><path d="M3 20h18" /><rect x="7" y="8" width="10" height="3" /><rect x="7" y="13" width="10" height="3" />'],
+];
+
+/** Fila de botones de alineación (`attr` es `data-align` o `data-dist`). */
+function alignRow(attr, defs) {
+  return `<div class="align-row">${defs.map(([k, title, body]) => `
+    <button class="btn icon" ${attr}="${k}" title="${title}" aria-label="${title}"><svg viewBox="0 0 24 24"
+      fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">${body}</svg></button>`).join('')}</div>`;
+}
 
 class App {
   constructor() {
@@ -264,6 +286,52 @@ class App {
     this.commit('Duplicar');
   }
 
+  /* ============================== alineación ============================== */
+
+  /** Nodos seleccionados (ids), o una lista vacía si sólo hay flujos. */
+  selectedNodeIds() {
+    return this.state.selected.filter((s) => s.type === 'node').map((s) => s.id);
+  }
+
+  /** Aplica un plan `{id, x, y}` de `align.js` (que no muta por su cuenta). */
+  applyPlan(plan) {
+    for (const c of plan) {
+      const n = nodeById(this.diagram, c.id);
+      if (n) { n.x = c.x; n.y = c.y; }
+    }
+  }
+
+  /**
+   * Alinea los nodos seleccionados (`left|centerX|right|top|centerY|bottom`).
+   * Con varios se alinean entre sí; con uno sólo se alinea contra el resto del
+   * diagrama. Es el remate para lo que ya está colocado y a pelo.
+   */
+  alignSelection(mode) {
+    const ids = this.selectedNodeIds();
+    if (!ids.length) return this.toast('Selecciona algún nodo para alinearlo.');
+    const plan = planAlign(this.diagram, ids, mode);
+    if (!plan.length) return this.toast('Ya están alineados.');
+    // El historial va antes de mutar, como en el resto de operaciones.
+    this.pushHistory();
+    this.applyPlan(plan);
+    this.commit('Alinear');
+    this.toast(ids.length === 1
+      ? `Nodo alineado con el resto del diagrama (${plan.length === 1 ? '1 nodo' : `${plan.length} nodos`}).`
+      : `${plan.length} nodo(s) alineados.`);
+  }
+
+  /** Reparte los nodos seleccionados en huecos iguales (3 o más). */
+  distributeSelection(axis) {
+    const ids = this.selectedNodeIds();
+    if (ids.length < 3) return this.toast('Selecciona tres nodos o más para repartirlos.');
+    const plan = planDistribute(this.diagram, ids, axis);
+    if (!plan.length) return this.toast('No caben: los nodos seleccionados se pisan.');
+    this.pushHistory();
+    this.applyPlan(plan);
+    this.commit('Repartir');
+    this.toast(`${plan.length} nodo(s) repartidos en ${axis === 'x' ? 'horizontal' : 'vertical'}.`);
+  }
+
   /* ============================== portapapeles ========================== */
 
   /** Ctrl+C: al portapapeles interno los nodos elegidos y sus flujos. */
@@ -409,6 +477,7 @@ class App {
   }
 
   inspectorMulti(sel) {
+    const nodos = this.state.selected.filter((s) => s.type === 'node').length;
     return `
       <h2>Selección múltiple</h2>
       <p class="empty">${sel.length} elementos seleccionados.</p>
@@ -419,6 +488,16 @@ class App {
           ${this.diagram.lanes.map((l, i) => `<option value="${i}">${esc(l.name)}</option>`).join('')}
         </select>
       </div>
+      ${nodos ? `
+      <div class="field">
+        <label>Alinear entre ellos</label>
+        ${alignRow('data-align', ALIGN_BUTTONS)}
+      </div>
+      ${nodos >= 3 ? `
+      <div class="field">
+        <label>Repartir</label>
+        ${alignRow('data-dist', DIST_BUTTONS)}
+      </div>` : ''}` : ''}
       <div class="actions">
         <button class="btn" id="b-dup">Duplicar</button>
         <button class="btn danger" id="b-del">Eliminar</button>
@@ -458,6 +537,10 @@ class App {
           <option value="">— sin carril —</option>
           ${this.diagram.lanes.map((l, i) => `<option value="${i}"${n.lane === i ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}
         </select>
+      </div>
+      <div class="field">
+        <label>Alinear con el resto</label>
+        ${alignRow('data-align', ALIGN_BUTTONS)}
       </div>
       <div class="actions">
         <button class="btn" id="b-dup">Duplicar</button>
@@ -561,9 +644,9 @@ class App {
         this.pushHistory();
         const t = NODE_TYPES[type];
         n.type = type;
-        if (type === 'decision' || type === 'start' || type === 'end') {
+        if (type === 'decision' || type === 'start' || type === 'end' || type === 'stop') {
           const base = Math.max(t.minW, t.minH, n.w, n.h);
-          const s = type === 'decision' ? base : Math.min(DOT_MAX, base);
+          const s = type === 'decision' ? base : Math.min(dotMax(type), base);
           n.w = s; n.h = s;
         } else {
           n.w = Math.max(t.minW, n.w);
@@ -635,6 +718,12 @@ class App {
     });
     body.querySelectorAll('[data-del]').forEach((btn) => {
       btn.addEventListener('click', () => this.deleteSelection({ type: 'edge', id: btn.dataset.del }));
+    });
+    body.querySelectorAll('[data-align]').forEach((btn) => {
+      btn.addEventListener('click', () => this.alignSelection(btn.dataset.align));
+    });
+    body.querySelectorAll('[data-dist]').forEach((btn) => {
+      btn.addEventListener('click', () => this.distributeSelection(btn.dataset.dist));
     });
 
     // Enter acepta el texto del campo: los cambios ya se aplican en vivo, sólo
@@ -910,6 +999,7 @@ class App {
   setTool(tool) {
     this.tool = tool;
     this.interaction?.clearInsertPreview();
+    this.interaction?.clearAlignGuides();
     // Cambiar de herramienta abandona cualquier trayectoria a medio trazar.
     if (tool !== 'connect') this.interaction?.cancelRoute();
     if (tool !== 'route') this.interaction?.setRouteEdge(null);

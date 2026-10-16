@@ -8,14 +8,31 @@ import { edgeGeometry, SIDES } from './routing.js';
  * Carriles (swimlanes): bandas horizontales que agrupan nodos por responsabilidad.
  */
 
+/** Diámetro máximo de los círculos inicial/final. */
+export const DOT_MAX = 28;
+/**
+ * El punto muerto es el mismo círculo que el inicio/fin, pero STOP_SCALE veces
+ * más grande en todo su rango de tamaños (de ahí que su lado por defecto, su
+ * mínimo y su máximo se deriven de los del inicio/fin en lugar de ir a mano).
+ */
+export const STOP_SCALE = 1.5;
+/** Diámetro máximo del punto muerto. */
+export const DOT_MAX_STOP = Math.round(DOT_MAX * STOP_SCALE);
+
+/** Diámetro máximo de un nodo circular según su tipo. */
+export function dotMax(type) {
+  return type === 'stop' ? DOT_MAX_STOP : DOT_MAX;
+}
+
 export const NODE_TYPES = {
   // Nodo inicial: círculo relleno.
   start: { label: 'Inicio', shape: 'initial', w: 20, h: 20, minW: 12, minH: 12, terminal: true },
   // Nodo final: círculo relleno con su contorno exterior.
   end: { label: 'Fin', shape: 'final', w: 20, h: 20, minW: 12, minH: 12, terminal: true },
   // Punto muerto: círculo con una diagonal (de abajo a arriba): el flujo se
-  // detiene aquí y no continúa (una vía muerta del proceso).
-  stop: { label: 'Punto muerto', shape: 'stop', w: 26, h: 26, minW: 16, minH: 16, terminal: true },
+  // detiene aquí y no continúa (una vía muerta del proceso). Es un círculo
+  // 1.5 veces mayor que el de inicio/fin (30 de lado por defecto, hasta 42).
+  stop: { label: 'Punto muerto', shape: 'stop', w: 20 * STOP_SCALE, h: 20 * STOP_SCALE, minW: 12 * STOP_SCALE, minH: 12 * STOP_SCALE, terminal: true },
   activity: { label: 'Actividad', shape: 'activity', w: 176, h: 64, minW: 100, minH: 44 },
   // Objeto: caja de esquinas rectas con nombre y, opcionalmente, un estado
   // entre << >> debajo. Admite cualquier número de entradas y salidas.
@@ -27,9 +44,6 @@ export const NODE_TYPES = {
   join: { label: 'Paralelo (join)', shape: 'bar', w: 12, h: 136, minW: 8, minH: 72 },
   note: { label: 'Nota', shape: 'note', w: 168, h: 76, minW: 110, minH: 52 },
 };
-
-/** Diámetro máximo de los círculos inicial/final. */
-export const DOT_MAX = 28;
 
 let counter = 0;
 export function uid(prefix = 'n') {
@@ -47,10 +61,9 @@ export function createNode(type, x, y, patch = {}) {
     w = s; h = s;
   }
   if (type === 'start' || type === 'end' || type === 'stop') {
-    // Los nodos inicial/final/punto muerto son círculos: siempre cuadrados.
-    const s = type === 'stop'
-      ? Math.max(w, h, t.minW, t.minH)
-      : Math.max(w, h, t.minW, t.minH);
+    // Los nodos inicial/final/punto muerto son círculos: siempre cuadrados y
+    // sin pasar de su diámetro máximo (el del punto muerto es mayor).
+    const s = Math.min(dotMax(type), Math.max(w, h, t.minW, t.minH));
     w = s; h = s;
   }
   const { w: _pw, h: _ph, x: _px, y: _py, ...rest } = patch;
@@ -492,8 +505,9 @@ export function deserialize(text) {
       w = s; h = s;
     }
     if (n.type === 'stop') {
-      // El punto muerto es un círculo: cuadrado siempre.
-      const s = Math.max(w, h);
+      // Migrar diagramas antiguos: el punto muerto es un círculo: cuadrado
+      // siempre, con su diámetro máximo (mayor que el de inicio/fin).
+      const s = Math.min(Math.max(Math.min(w, h), t.minW), DOT_MAX_STOP);
       w = s; h = s;
     }
     if (n.type === 'start' || n.type === 'end') {

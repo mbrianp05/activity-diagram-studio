@@ -108,6 +108,64 @@ export function snapMove(nodes, moving, dx, dy, { tol = 6, skip = null } = {}) {
   return { dx: dx + (hx ? hx.d : 0), dy: dy + (hy ? hy.d : 0), guides };
 }
 
+/**
+ * Igual que `snapMove`, pero para la redimensión: en vez de desplazar el nodo se
+ * corrige su tamaño para que su borde (o su centro) coincida con la línea de
+ * otro nodo. Es lo que hace que dos cajas acaben midiendo lo mismo.
+ *
+ * El lado que se arrastra es el derecho/inferior, así que sólo se engancha el
+ * borde de ese lado y el centro (para mover los dos a la vez); el borde fijo no
+ * se toca. `node` es el nodo que se está redimensionando y se excluye de las
+ * referencias.
+ *
+ * @returns {{w:number, h:number, guides:Array}}
+ */
+export function snapSize(nodes, node, w, h, { tol = 6 } = {}) {
+  const otros = (nodes || []).filter((n) => !node || n.id !== node.id);
+  const targets = alignTargets(otros);
+  const gx = mejorBorde(targets.xs, node.x, w, tol);
+  const gy = mejorBorde(targets.ys, node.y, h, tol);
+  const nw = gx ? Math.max(1, w + gx.d * (gx.i === 1 ? 2 : 1)) : w;
+  const nh = gy ? Math.max(1, h + gy.d * (gy.i === 1 ? 2 : 1)) : h;
+  const guides = [];
+  if (gx) {
+    guides.push({
+      axis: 'x', value: gx.v,
+      from: Math.min(node.y, gx.node.y) - GUIDE_PAD,
+      to: Math.max(node.y + nh, gx.node.y + gx.node.h) + GUIDE_PAD,
+    });
+  }
+  if (gy) {
+    guides.push({
+      axis: 'y', value: gy.v,
+      from: Math.min(node.x, gy.node.x) - GUIDE_PAD,
+      to: Math.max(node.x + nw, gy.node.x + gy.node.w) + GUIDE_PAD,
+    });
+  }
+  return { w: nw, h: nh, guides };
+}
+
+/** Corrección de tamaño: sólo el borde que se arrastra y el centro. */
+function mejorBorde(targets, base, size, tol) {
+  const lines = marks(base, size);
+  let mejor = null;
+  for (const t of targets) {
+    // i = 0 es el borde fijo (no se toca al redimensionar); i = 2, el que se
+    // arrastra; i = 1, el centro.
+    for (let i = 1; i <= 2; i += 1) {
+      const d = t.v - lines[i];
+      if (Math.abs(d) > tol) continue;
+      if (mejor) {
+        const cerca = Math.abs(d) < Math.abs(mejor.d) - 0.01;
+        const empate = Math.abs(d) <= Math.abs(mejor.d) + 0.01 && i === 1;
+        if (!cerca && !empate) continue;
+      }
+      mejor = { d, v: t.v, node: t.node, i };
+    }
+  }
+  return mejor;
+}
+
 /* ------------------------------------------------------------------ */
 /* Comandos del inspector                                              */
 /* ------------------------------------------------------------------ */

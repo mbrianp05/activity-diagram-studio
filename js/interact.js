@@ -6,14 +6,14 @@
 import {
   NODE_TYPES, createNode, createEdge, addEdge, removeNode, removeEdge,
   nodeAt, edgeAt, shiftLanes, inEdges, outEdges, nodeById, edgeById, readWay,
-  cloneDiagram, DOT_MAX,
+  cloneDiagram, dotMax,
 } from './model.js';
 import {
   edgeGeometry, edgePath, anchors, anchorFor, sideNormal, sideNear,
   userRouteTip, guidePoint, avoidNodes, nearestOnPolyline,
 } from './routing.js';
 import { LANE_HEADER } from './render.js';
-import { snapMove, unionBox } from './align.js';
+import { snapMove, snapSize, unionBox } from './align.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const GRID = 8;
@@ -246,15 +246,20 @@ export class Interaction {
     }
     const ids = this.app.state.selected.filter((s) => s.type === 'node').map((s) => s.id);
     if (!ids.includes(id)) return;
+    const items = ids.map((i) => {
+      const n = nodeById(this.app.diagram, i);
+      return { id: i, x0: n.x, y0: n.y, w: n.w, h: n.h };
+    });
+    this.clearAlignGuides();
     this.drag = {
       kind: 'nodes',
       start: w,
       moved: false,
       free: e.altKey,
-      items: ids.map((i) => {
-        const n = nodeById(this.app.diagram, i);
-        return { id: i, x0: n.x, y0: n.y };
-      }),
+      items,
+      // Caja del grupo en su sitio de partida: el ajuste a rejilla se calcula
+      // sobre ella, para que el grupo se mueva rígido y no se descuadre.
+      box: unionBox(items),
     };
   }
 
@@ -292,11 +297,38 @@ export class Interaction {
     return edgeAt(this.app.diagram, w.x, w.y, Math.max(8, 12 / k));
   }
 
+  /**
+   * Punto final de un nodo nuevo: se deduce de dónde se ha puesto el puntero y
+   * luego se ajusta a rejilla y a las líneas de los nodos que ya hay, de forma
+   * que al colocarlo al lado de otro quede de verdad en la misma fila o columna
+   * en vez de a un píxel de otro.
+   * @returns {{x:number, y:number}} esquina superior izquierda
+   */
+  snapSpot(type, wx, wy) {
+    const t = NODE_TYPES[type];
+    const cuadrado = type === 'decision' || type === 'start' || type === 'end' || type === 'stop';
+    const w = cuadrado ? Math.max(t.w, t.h) : t.w;
+    const h = cuadrado ? Math.max(t.w, t.h) : t.h;
+    let x = Math.round(wx - w / 2);
+    let y = Math.round(wy - h / 2);
+    if (x < LANE_HEADER + w / 2) x = LANE_HEADER + 4;
+    if (this.snap) {
+      x = Math.round(x / GRID) * GRID;
+      y = Math.round(y / GRID) * GRID;
+    }
+    const res = snapMove(this.app.diagram.nodes, [{ x, y, w, h }], 0, 0, {
+      tol: GUIDE_PX / (this.app.diagram.view.k || 1),
+    });
+    return { x: Math.round(x + res.dx), y: Math.round(y + res.dy) };
+  }
+
   placeNode(type, w) {
     const d = this.app.diagram;
+    const spot = this.snapSpot(type, w.x, w.y);
     this.app.pushHistory('Crear nodo');
     const node = createNode(type, w.x, w.y);
-    if (w.x < LANE_HEADER + node.w / 2) node.x = LANE_HEADER + 4;
+    node.x = spot.x;
+    node.y = spot.y;
     node.lane = d.lanes.length ? laneOf(d, node) : null;
     d.nodes.push(node);
     // Tras insertar se vuelve a la herramienta de selección: encadenar varios
@@ -573,12 +605,31 @@ export class Interaction {
     if (d.kind === 'nodes') {
       const dx = w.x - d.start.x;
       const dy = w.y - d.start.y;
-      if (!d.moved && Math.hypot(dx, dy) * this.app.diagram.view.k < 3) return;
+      const k = this.app.diagram.view.k || 1;
+      if (!d.moved && Math.hypot(dx, dy) * k < 3) return;
       d.moved = true;
-      const raw = { x: dx, y: dy };
-      const step = this.snapPoint(raw, d.free);
-      const ox = d.free ? dx : step.x;
-      const oy = d.free ? dy : step.y;
+      let ox = dx;
+      let oy = dy;
+      if (d.free) {
+        // Alt: ni rejilla ni guías, cada nodo va donde lo suelta el puntero.
+        this.clearAlignGuides();
+      } else {
+        if (this.snap) {
+          // Rejilla: se snapa el origen de la caja del grupo (no el
+          // desplazamiento), así el grupo se mantiene rígido y además todos los
+          // nodos acaban cayendo sobre la rejilla global.
+          ox = Math.round((d.box.x + ox) / GRID) * GRID - d.box.x;
+          oy = Math.round((d.box.y + oy) / GRID) * GRID - d.box.y;
+        }
+        // Guías de alineación: si un borde o el centro del grupo queda a tiro de
+        // la línea de otro nodo, se corrige para que coincidan de verdad.
+        const res = snapMove(this.app.diagram.nodes, d.items.map((it) => ({
+          x: it.x0 + ox, y: it.y0 + oy, w: it.w, h: it.h,
+        })), ox, oy, { tol: GUIDE_PX / k, skip: new Set(d.items.map((it) => it.id)) });
+        ox = res.dx;
+        oy = res.dy;
+        this.drawAlignGuides(res.guides);
+      }
       for (const it of d.items) {
         const n = nodeById(this.app.diagram, it.id);
         n.x = Math.round(it.x0 + ox);
@@ -597,13 +648,27 @@ export class Interaction {
 
     if (d.kind === 'resize') {
       const t = NODE_TYPES[d.node.type];
-      const nw = d.free ? d.w0 + (w.x - d.start.x) : Math.round((d.w0 + (w.x - d.start.x)) / GRID) * GRID;
-      const nh = d.free ? d.h0 + (w.y - d.start.y) : Math.round((d.h0 + (w.y - d.start.y)) / GRID) * GRID;
-      if (d.node.type === 'decision' || d.node.type === 'start' || d.node.type === 'end' || d.node.type === 'stop') {
+      const cuadrado = d.node.type === 'decision' || d.node.type === 'start'
+        || d.node.type === 'end' || d.node.type === 'stop';
+      let nw = d.free ? d.w0 + (w.x - d.start.x) : Math.round((d.w0 + (w.x - d.start.x)) / GRID) * GRID;
+      let nh = d.free ? d.h0 + (w.y - d.start.y) : Math.round((d.h0 + (w.y - d.start.y)) / GRID) * GRID;
+      if (d.free) {
+        this.clearAlignGuides();
+      } else {
+        // El borde que se arrastra se engancha a las líneas de los demás nodos,
+        // así dos cajas acaban con la misma medida. Los cuadrados sólo se
+        // ajustan en horizontal: la altura es la que tenga que salir.
+        const res = snapSize(this.app.diagram.nodes, d.node, nw, nh, { tol: GUIDE_PX / (this.app.diagram.view.k || 1) });
+        nw = res.w;
+        nh = cuadrado ? res.w : res.h;
+        this.drawAlignGuides(res.guides);
+      }
+      if (cuadrado) {
         // Decisión: cuadrado de puntas verticales. Inicio/fin/punto muerto:
-        // círculos (los pequeños, los dos últimos, con tope en DOT_MAX).
+        // círculos (los pequeños, los dos últimos, con tope en su DOT_MAX, que
+        // en el punto muerto es 1.5 veces mayor).
         const base = Math.max(t.minW, t.minH, nw, nh);
-        const s = d.node.type === 'decision' ? base : Math.min(DOT_MAX, base);
+        const s = d.node.type === 'decision' ? base : Math.min(dotMax(d.node.type), base);
         d.node.w = s;
         d.node.h = s;
       } else {
@@ -656,9 +721,37 @@ export class Interaction {
     this.drawRouteHandles();
   }
 
+  /* ---------------------------- guías de alineación ---------------------- */
+
+  /**
+   * Dibuja las líneas en las que el grupo acaba de encajar: si una no aparece,
+   * el nodo no está alineado con nada. Sólo vive durante el arrastre.
+   */
+  drawAlignGuides(guides) {
+    if (!guides || !guides.length) { this.clearAlignGuides(); return; }
+    if (!this.guideLayer) {
+      this.guideLayer = svgEl('g', { class: 'align-guides' });
+      this.overlay.appendChild(this.guideLayer);
+    }
+    this.guideLayer.textContent = '';
+    for (const g of guides) {
+      const attrs = g.axis === 'x'
+        ? { x1: g.value, y1: g.from, x2: g.value, y2: g.to }
+        : { x1: g.from, y1: g.value, x2: g.to, y2: g.value };
+      this.guideLayer.appendChild(svgEl('line', { class: 'align-guide', ...attrs }));
+    }
+  }
+
+  clearAlignGuides() {
+    if (!this.guideLayer) return;
+    this.guideLayer.remove();
+    this.guideLayer = null;
+  }
+
   onPointerUp(e) {
     const d = this.drag;
     this.drag = null;
+    this.clearAlignGuides();
     if (this.svg.style.cursor === 'grabbing') this.svg.style.cursor = '';
 
     if (!d) {
@@ -738,11 +831,10 @@ export class Interaction {
       this.clearInsertPreview();
       return;
     }
-    // Sin ajuste a rejilla: el fantasma muestra el punto real de colocación.
+    // El fantasma va exactamente donde caería el nodo: mismo ajuste a rejilla
+    // y mismas guías de alineación que al colocarlo.
     const w = this.toWorld(e.clientX, e.clientY);
-    let x = Math.round(w.x - t.w / 2);
-    const y = Math.round(w.y - t.h / 2);
-    if (w.x < LANE_HEADER + t.w / 2) x = LANE_HEADER + 4;
+    const { x, y } = this.snapSpot(tool, w.x, w.y);
     if (!this.insertPreview || this.insertPreview.tool !== tool) {
       this.clearInsertPreview();
       const g = svgEl('g', { class: 'insert-preview' });

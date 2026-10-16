@@ -36,8 +36,8 @@ const STYLE = `
   .lane-band { fill: #ffffff; fill-opacity: .014; stroke: #26262a; stroke-width: 1; }
   .lane-band.alt { fill-opacity: .03; }
   .lane-head { fill: #0e0e10; stroke: #26262a; }
-  .lane-title { fill: #8d8d96; font: 600 12px "Segoe UI", Inter, system-ui, sans-serif; }
-  .lane-sub { fill: #63636b; font: 10px "Segoe UI", Inter, system-ui, sans-serif; }
+  .lane-title { fill: #8d8d96; font: 600 12px "Segoe UI", Inter, system-ui, sans-serif; text-anchor: middle; dominant-baseline: middle; }
+  .align-guide { fill: none; stroke: #f4f4f6; stroke-width: 1; stroke-dasharray: 5 4; opacity: .75; }
 `;
 
 const MARKER = `
@@ -63,7 +63,7 @@ export function exportSvg(svg, diagram, { forPng = false, padding = 40 } = {}) {
   const height = Math.max(300, Math.max(b.y + b.h, lanesH) - minY + padding);
 
   const clone = svg.querySelector('#viewport').cloneNode(true);
-  clone.querySelectorAll('.handle, .node-token-glow, .temp-edge, .insert-preview, .route-points, .port-hints, [data-resize], .edge-hit, .node-hit')
+  clone.querySelectorAll('.handle, .node-token-glow, .temp-edge, .insert-preview, .route-points, .port-hints, .align-guides, [data-resize], [data-lane-resize], .edge-hit, .node-hit')
     .forEach((n) => n.remove());
   clone.querySelectorAll('.node.selected .node-shape').forEach((n) => {
     n.setAttribute('stroke', '#6f6f78');

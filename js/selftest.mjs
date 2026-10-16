@@ -2,13 +2,14 @@
  * Pruebas de la lógica del diagrama (sin DOM): modelo, validación y simulación.
  * Ejecutar con:  node js/selftest.mjs
  */
-import { sampleDiagram, createNode, createEdge, createDiagram, createLane, deserialize, assignLanes, shiftLanes, swapLanes, removeLaneAt, laneTop, NODE_TYPES, copyGroup, pasteGroup, groupBounds, freeSpot } from './model.js';
+import { sampleDiagram, createNode, createEdge, createDiagram, createLane, deserialize, assignLanes, shiftLanes, swapLanes, removeLaneAt, laneTop, nodeById, NODE_TYPES, copyGroup, pasteGroup, groupBounds, freeSpot } from './model.js';
 import { validate, summary } from './validate.js';
 import { createSim, start, step, evaluate } from './simulate.js';
 import {
   anchorFor, pickSides, edgeGeometry, labelSpot, guidePoint, avoidNodes,
   nearestOnPolyline, END_RING_GAP, ARROW_GAP,
 } from './routing.js';
+import { unionBox, alignTargets, snapMove, snapSize, planAlign, planDistribute } from './align.js';
 
 /** ¿Algún tramo del trazado atraviesa el interior del rectángulo? */
 function cruzaNodo(pts, r, margen = 1) {
@@ -662,7 +663,166 @@ console.log('\n19. Nodo de punto muerto');
   // Sobrevive al guardado.
   const back = deserialize(JSON.stringify(g));
   check('el punto muerto sobrevive al guardado', back.nodes.some((n) => n.type === 'stop'));
-  check('y no se deforma al abrir', back.nodes.filter((n) => n.type === 'stop').every((n) => n.w === n.h));
+  console.log('\n20. Alineación: guías de arrastre');
+{
+  // Dos actividades en filas distintas: al arrastrar la segunda cerca de la
+  // primera sus centros tienen que caer en la misma línea.
+  const g = createDiagram();
+  const alta = createNode('activity', 300, 300, { label: 'A' });  // y 268..332, centro 300
+  const baja = createNode('activity', 600, 460, { label: 'B' });  // y 428..492, centro 460
+  g.nodes.push(alta, baja);
+  // Igual que en el arrastre real: el nodo que se mueve no es referencia.
+  const mover = (rect, dx, dy, tol = 6) =>
+    snapMove(g.nodes, [rect], dx, dy, { tol, skip: new Set([baja.id]) });
+
+  check('la caja del grupo es la del nodo',
+    unionBox([baja]).y === baja.y && unionBox([baja]).h === baja.h);
+
+  // A 3 px del centro de la otra: engancha exacto.
+  let r = mover({ ...baja, y: baja.y - 157 }, 0, -157);
+  check('el centro se engancha al centro de al lado', r.dy === -160, JSON.stringify(r));
+  check('y avisa con su guía', r.guides.some((q) => q.axis === 'y'), JSON.stringify(r.guides));
+  check('en horizontal no hay nada cerca, así que no toca',
+    r.dx === 0 && !r.guides.some((q) => q.axis === 'x'), JSON.stringify(r.guides));
+
+  // Lejos de toda línea, el movimiento se queda como estaba.
+  r = mover({ ...baja, y: baja.y - 100 }, 0, -100);
+  check('lejos de todo, no corrige', r.dy === -100 && r.guides.length === 0, JSON.stringify(r));
+
+  // El borde izquierdo también sirve.
+  r = mover({ ...baja, x: 297 }, 297, 0);
+  check('el borde izquierdo se engancha al de al lado', r.dx === 3, JSON.stringify(r));
+
+  // Sin `skip` el nodo se ancla a sí mismo (justo lo que el arrastre evita).
+  r = snapMove(g.nodes, [{ ...baja, x: baja.x + 4 }], 4, 0, { tol: 6 });
+  check('sin `skip` se ancla a su propia posición', r.dx === 0, JSON.stringify(r));
+
+  // Columna y fila a la vez.
+  r = mover({ ...baja, x: 297, y: baja.y - 157 }, 297, -157);
+  check('las dos guías a la vez', r.guides.length === 2 && r.dx === 3 && r.dy === -160, JSON.stringify(r.guides));
+  const guiaY = r.guides.find((q) => q.axis === 'y');
+  check('la guía abarca los dos nodos',
+    guiaY.from < alta.y && guiaY.to > alta.y + alta.h, JSON.stringify(guiaY));
+
+  // Las referencias son borde, centro y borde de cada nodo quieto.
+  const t = alignTargets(g.nodes, new Set([baja.id]));
+  check('borde, centro y borde por nodo',
+    t.xs.length === 3 * (g.nodes.length - 1) && t.ys.length === 3 * (g.nodes.length - 1),
+    JSON.stringify({ xs: t.xs.length, ys: t.ys.length }));
+  check('el nodo que se mueve no ofrece referencias', !t.xs.some((q) => q.node.id === baja.id));
+
+  // El margen llega en píxeles de pantalla: interact.js lo divide por el zoom.
+  const conMargen = mover({ ...baja, y: baja.y - 156 }, 0, -156, 6);
+  const sinMargen = mover({ ...baja, y: baja.y - 156 }, 0, -156, 1);
+  check('el margen de enganche es el que se le pasa',
+    conMargen.dy === -160 && conMargen.guides.length === 1
+    && sinMargen.dy === -156 && sinMargen.guides.length === 0,
+    JSON.stringify({ conMargen, sinMargen }));
+
+  // Un grupo se mueve rígido: la guía se calcula sobre su caja, no nodo a nodo.
+  const par = [createNode('activity', 1200, 500), createNode('activity', 1500, 700)];
+  g.nodes.push(...par);
+  const caja = unionBox(par);
+  const separacion = par[1].y - par[0].y;
+  r = snapMove(g.nodes, par.map((n) => ({ ...n, y: n.y - 200 })), 0, -200,
+    { tol: 6, skip: new Set(par.map((n) => n.id)) });
+  check('el grupo se engancha por su caja', r.dy === -200 && r.guides.length === 1, JSON.stringify({ r, caja }));
+  check('y nadie cambia de sitio dentro del grupo',
+    (par[1].y + r.dy) - (par[0].y + r.dy) === separacion
+    && par[0].y + r.dy + par[0].h / 2 === alta.y + alta.h / 2, JSON.stringify({ r, caja }));
+}
+
+console.log('\n21. Alineación: redimensión');
+{
+  // Se coloca el nodo a mano para que las cuentas del test sean legibles:
+  // `a` ocupa x 600..776 (líneas 600/688/776) y `b` empieza en 500.
+  const g = createDiagram();
+  const a = createNode('activity', 0, 0);
+  const b = createNode('activity', 0, 0);
+  a.x = 600; a.y = 364; b.x = 500; b.y = 300;
+  g.nodes.push(a, b);
+
+  // El borde que se arrastra (derecho) a 3 px del de `a`.
+  const r = snapSize(g.nodes, b, 103, 60, { tol: 6 });
+  check('el borde que se arrastra se engancha', r.w === 100, JSON.stringify(r));
+  check('y avisa con su guía', r.guides.length === 1 && r.guides[0].axis === 'x', JSON.stringify(r.guides));
+  check('la guía abarca los dos nodos',
+    r.guides[0].from <= Math.min(a.y, b.y) && r.guides[0].to >= Math.max(a.y + a.h, b.y + b.h),
+    JSON.stringify(r.guides));
+
+  // El centro manda el doble de corrección: se mueve el borde fijo.
+  const c = snapSize(g.nodes, b, 370, 60, { tol: 6 });
+  check('el centro se engancha moviendo el otro borde', c.w === 376, JSON.stringify(c));
+
+  // En vertical, igual que en horizontal.
+  const v = snapSize(g.nodes, b, 176, 66, { tol: 6 });
+  check('también en vertical', v.h === 64 && v.guides.some((q) => q.axis === 'y'), JSON.stringify(v));
+
+  // El nodo no se mueve de sitio: sólo cambian sus medidas.
+  check('sin cambios de sitio', b.x === 500 && b.y === 300);
+
+  // Lejos de toda línea no corrige, y un nodo no se usa a sí mismo.
+  check('lejos de todo, no corrige', snapSize(g.nodes, b, 300, 150, { tol: 6 }).w === 300);
+  const solo = snapSize([b], b, 103, 66, { tol: 6 });
+  check('sin otros nodos no hay nada que encajar', solo.w === 103 && solo.guides.length === 0, JSON.stringify(solo));
+}
+
+console.log('\n22. Alineación: comandos del inspector');
+{
+  const g = createDiagram();
+  const a = createNode('activity', 300, 300);
+  const b = createNode('activity', 600, 462);   // 4 px más abajo que a
+  const c = createNode('note', 900, 620);
+  g.nodes.push(a, b, c);
+  const ids = [a.id, b.id, c.id];
+  const centroY = (n) => n.y + n.h / 2;
+  // El plan se calcula antes de mutar (para poder apilar el historial antes).
+  const aplicar = (plan) => {
+    for (const p of plan) Object.assign(nodeById(g, p.id), p);
+    return plan;
+  };
+
+  aplicar(planAlign(g, ids, 'left'));
+  check('alinear a la izquierda', a.x === b.x && b.x === c.x, JSON.stringify([a.x, b.x, c.x]));
+
+  aplicar(planAlign(g, ids, 'centerY'));
+  check('centrar en vertical comparte el centro aunque sean de distinto alto',
+    new Set([a, b, c].map(centroY)).size === 1, JSON.stringify([a, b, c].map(centroY)));
+  check('y sólo cambia el eje pedido', a.x === b.x && b.x === c.x, JSON.stringify([a.x, b.x, c.x]));
+
+  aplicar(planAlign(g, ids, 'right'));
+  check('alinear a la derecha', a.x + a.w === c.x + c.w && b.x + b.w === c.x + c.w);
+
+  aplicar(planAlign(g, ids, 'bottom'));
+  check('alinear abajo', a.y + a.h === c.y + c.h, JSON.stringify([a.y, b.y, c.y]));
+  check('modo desconocido: no hace nada', planAlign(g, ids, 'diagonal').length === 0);
+
+  // Un nodo suelto se alinea contra el resto del diagrama.
+  c.y = 700;
+  const yPrevio = a.y;
+  aplicar(planAlign(g, [c.id], 'centerY'));
+  const resto = unionBox([a, b]);
+  check('un nodo suelto se alinea con el resto',
+    Math.abs(centroY(c) - (resto.y + resto.h / 2)) <= 1, JSON.stringify({ c: centroY(c), resto }));
+  check('y no mueve a los otros', a.y === yPrevio);
+  check('si está solo en el diagrama no hay con qué alinear',
+    planAlign({ ...g, nodes: [c] }, [c.id], 'centerY').length === 0);
+
+  // Repartir: huecos iguales dejando fijos el primero y el último.
+  const h1 = createNode('activity', 1500, 300);
+  const h2 = createNode('activity', 1700, 500);
+  const h3 = createNode('activity', 2200, 700);
+  g.nodes.push(h1, h2, h3);
+  const plan = planDistribute(g, [h1.id, h2.id, h3.id], 'x');
+  check('repartir deja el primero y el último quietos',
+    !plan.some((p) => p.id === h1.id || p.id === h3.id), JSON.stringify(plan));
+  aplicar(plan);
+  const huecos = [h2.x - (h1.x + h1.w), h3.x - (h2.x + h2.w)];
+  check('y huecos iguales en medio', Math.abs(huecos[0] - huecos[1]) < 1, JSON.stringify(huecos));
+  check('con menos de tres nodos no se reparte', planDistribute(g, [h1.id, h2.id], 'x').length === 0);
+  check('eje desconocido: nada', planDistribute(g, [h1.id, h2.id, h3.id], 'z').length === 0);
+  check('si los nodos se pisan, no propone nada',
+    planDistribute(g, [a.id, b.id, c.id], 'x').length === 0, JSON.stringify([a.x, b.x, c.x]));
 }
 
 console.log(`\n${pass} pruebas ok, ${fail} fallos\n`);

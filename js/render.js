@@ -8,7 +8,14 @@ import {
 import { laneTop, NODE_TYPES, nodeById } from './model.js';
 
 const NS = 'http://www.w3.org/2000/svg';
-export const LANE_HEADER = 190;
+/**
+ * La cabecera de carril es una barra vertical fina pegada al borde izquierdo,
+ * con el nombre del actor escrito de lado. Es también el margen que los nodos
+ * no pueden pisar (`interact.js:snapSpot`).
+ */
+export const LANE_HEADER = 40;
+/** Alto de la franja inferior de la barra que arrastra para redimensionar. */
+export const LANE_GRIP = 12;
 
 function el(name, attrs = {}, parent) {
   const node = document.createElementNS(NS, name);
@@ -33,12 +40,42 @@ function textLines(label, maxChars) {
   return lines.slice(0, 4);
 }
 
+/** Ancho aproximado de un carácter del nombre de carril (12px semibold). */
+const LANE_CHAR_W = 6.9;
+
+/**
+ * Recorta el nombre del actor para que quepa girado dentro de su banda: si no
+ * cabe entero se corta con puntos suspensivos en vez de salirse de la barra.
+ */
+function fitLaneName(name, height) {
+  const hueco = Math.max(0, height - LANE_GRIP - 10);
+  const max = Math.floor(hueco / LANE_CHAR_W);
+  const txt = String(name || '');
+  if (txt.length <= max) return txt;
+  return `${txt.slice(0, Math.max(1, max - 1))}…`;
+}
+
 export const ACTIVITY_RX = 12;
 /** Separación entre el círculo final y su contorno exterior. */
 const RING_W = 1.4;
+/** Trazo del círculo del punto muerto (`.node.type-stop .node-shape`). */
+const STOP_STROKE_W = 1.6;
+/** Grosor de la diagonal interior: siempre más fino que el círculo. */
+const STOP_SLASH_W = 1.2;
+/** Holgura entre la diagonal y el borde interior del círculo. */
+const STOP_SLASH_GAP = 1.6;
 
 function dotRadius(node) {
   return Math.min(node.w, node.h) / 2;
+}
+
+/**
+ * Media longitud de la diagonal del punto muerto, medida en cada eje (la línea
+ * va a 45°, así que la punta está a `d · √2` del centro). Se recorta para que
+ * ni la punta redonda (`stopSlashW / 2`) ni el grosor se salgan del círculo.
+ */
+function stopSlashHalf(r) {
+  return Math.max(2, (r - STOP_STROKE_W / 2 - STOP_SLASH_GAP - STOP_SLASH_W / 2) / Math.SQRT2);
 }
 
 function shapeFor(node) {
@@ -150,6 +187,7 @@ export class Renderer {
     const layer = this.layerLanes;
     layer.textContent = '';
     if (!d.lanes.length) return;
+    const cx = LANE_HEADER / 2;
     let y = 0;
     d.lanes.forEach((lane, i) => {
       const h = lane.height;
@@ -158,18 +196,28 @@ export class Renderer {
         class: `lane-band${i % 2 ? ' alt' : ''}`,
       }, layer);
       el('rect', { x: 0, y, width: LANE_HEADER, height: h, class: 'lane-head' }, layer);
+      // El actor va girado 90º, centrado en la barra y recortado a su alto.
+      const cy = y + (h - LANE_GRIP) / 2;
       const active = state.selectedLane === i;
       const title = el('text', {
-        x: 14, y: y + Math.min(24, h / 2), class: `lane-title${active ? ' dragging' : ''}`,
-        'data-lane-title': i,
+        x: cx, y: cy, class: `lane-title${active ? ' dragging' : ''}`,
+        'data-lane-title': i, transform: `rotate(-90 ${cx} ${cy})`,
       }, layer);
-      title.textContent = lane.name;
-      el('rect', {
-        x: 0, y: y + h - 22, width: LANE_HEADER, height: 22,
-        class: 'lane-head', 'data-lane-resize': i, style: 'cursor: ns-resize',
+      title.textContent = fitLaneName(lane.name, h);
+      el('title', {}, title).textContent = `${lane.name} · doble clic para renombrar`;
+      // Asidero de redimensión: franja fina en el borde inferior de la barra.
+      const gripY = y + h - LANE_GRIP;
+      const attrs = { 'data-lane-resize': i, style: 'cursor: ns-resize' };
+      const grip = el('rect', {
+        x: 0, y: gripY, width: LANE_HEADER, height: LANE_GRIP, class: 'lane-grip', ...attrs,
       }, layer);
-      const grip = el('text', { x: 8, y: y + h - 7, class: 'lane-sub' }, layer);
-      grip.textContent = `${d.nodes.filter((n) => laneIndexOf(d, n) === i).length} nodos · arrastra para redimensionar`;
+      el('title', {}, grip).textContent = 'Arrastra para cambiar el alto del carril';
+      for (const dy of [-3, 3]) {
+        el('line', {
+          x1: cx - 7, y1: gripY + LANE_GRIP / 2 + dy, x2: cx + 7, y2: gripY + LANE_GRIP / 2 + dy,
+          class: 'lane-grip-mark', ...attrs,
+        }, layer);
+      }
       y += h;
     });
   }
@@ -253,12 +301,12 @@ export class Renderer {
       const r = dotRadius(node);
       const cx = node.x + node.w / 2;
       const cy = node.y + node.h / 2;
-      const d = r * 0.72;
+      const d = stopSlashHalf(r);
       slash.setAttribute('x1', cx - d);
       slash.setAttribute('y1', cy + d);
       slash.setAttribute('x2', cx + d);
       slash.setAttribute('y2', cy - d);
-      slash.setAttribute('stroke-width', Math.max(1.6, r * 0.22));
+      slash.setAttribute('stroke-width', STOP_SLASH_W);
       slash.setAttribute('opacity', '1');
     } else {
       slash.setAttribute('opacity', '0');
@@ -452,16 +500,6 @@ if (node.type === 'start' || node.type === 'end' || node.type === 'stop') {
   edgeScreenShape(edgeId) {
     return this.edgeEls.get(edgeId);
   }
-}
-
-function laneIndexOf(d, node) {
-  if (Number.isInteger(node.lane)) return node.lane;
-  let acc = 0;
-  for (let i = 0; i < d.lanes.length; i += 1) {
-    acc += d.lanes[i].height;
-    if (node.y + node.h / 2 < acc) return i;
-  }
-  return 0;
 }
 
 export { laneTop };
