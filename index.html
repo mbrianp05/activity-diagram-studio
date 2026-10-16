@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Activity Diagram Studio</title>
+  <link rel="icon"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230b0b0c'/%3E%3Cpath d='M9 8h9l6 8-6 8H9z' fill='none' stroke='white' stroke-width='2.4'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+
+<body>
+  <div class="app">
+
+    <header class="topbar">
+      <div class="brand">
+        <svg viewBox="0 0 32 32" width="22" height="22" aria-hidden="true">
+          <rect width="32" height="32" rx="7" fill="#0b0b0c" stroke="#3a3a40" />
+          <path d="M9 8h9l6 8-6 8H9z" fill="none" stroke="#fff" stroke-width="2.4" />
+        </svg>
+        <strong>Activity Studio</strong>
+      </div>
+
+      <div class="topbar-actions">
+        <button id="btn-undo" class="btn icon" title="Deshacer (Ctrl+Z)" aria-label="Deshacer"><svg viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 9h10a6 6 0 0 1 0 12h-7" />
+            <path d="M8 5l-4 4 4 4" />
+          </svg></button>
+        <button id="btn-redo" class="btn icon" title="Rehacer (Ctrl+Y)" aria-label="Rehacer"><svg viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 9H10a6 6 0 0 0 0 12h7" />
+            <path d="M16 5l4 4-4 4" />
+          </svg></button>
+        <span class="sep"></span>
+        <button id="btn-new" class="btn icon" title="Nuevo diagrama" aria-label="Nuevo"><svg viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg></button>
+        <button id="btn-open" class="btn icon" title="Abrir diagrama" aria-label="Abrir"><svg viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+          </svg></button>
+        <button id="btn-save" class="btn icon" title="Guardar (Ctrl+S)" aria-label="Guardar"><svg viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 4h11l3 3v13H5z" />
+            <path d="M8 4v5h7V4" />
+            <path d="M8 20v-7h8v7" />
+          </svg></button>
+        <details class="menu">
+          <summary class="btn icon" title="Exportar" aria-label="Exportar"><svg viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 4v11m0 0l-4-4m4 4l4-4" />
+              <path d="M5 20h14" />
+            </svg></summary>
+          <div class="menu-list">
+            <button id="btn-svg" class="menu-item">Como SVG</button>
+            <button id="btn-png" class="menu-item">Como PNG</button>
+          </div>
+        </details>
+        <span class="sep"></span>
+        <button id="btn-validate" class="btn icon" title="Validar diagrama" aria-label="Validar"><svg
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+            stroke-linejoin="round">
+            <circle cx="12" cy="12" r="8" />
+            <path d="M8.5 12.5l2.5 2.5 4.5-5" />
+          </svg></button>
+        <button id="btn-sim" class="btn icon primary" title="Simular" aria-label="Simular"><svg viewBox="0 0 24 24"
+            fill="currentColor">
+            <path d="M8 5v14l11-7z" />
+          </svg></button>
+        <input type="file" id="file-input" accept="application/json,.json" hidden />
+      </div>
+    </header>
+
+    <aside class="palette">
+      <h2>Herramientas</h2>
+      <ul class="tools grid" id="tools">
+        <li><button class="tool" data-tool="select" data-shape="cursor" title="Seleccionar y mover (V)"
+            aria-label="Seleccionar">
+            <svg viewBox="0 0 24 24">
+              <path d="M5 3l14 8-6 1.6L10 19z" />
+            </svg></button></li>
+        <li><button class="tool" data-tool="start" data-shape="initial" title="Nodo inicial (S)" aria-label="Inicio">
+            <svg viewBox="0 0 44 24">
+              <circle cx="22" cy="12" r="9" class="dot" />
+            </svg></button></li>
+        <li><button class="tool" data-tool="end" data-shape="final" title="Nodo final (E)" aria-label="Fin">
+            <svg viewBox="0 0 44 24">
+              <circle cx="22" cy="12" r="10" />
+              <circle cx="22" cy="12" r="6" class="dot" />
+            </svg></button></li>
+        <li><button class="tool" data-tool="stop" data-shape="stop" title="Punto muerto: el flujo se detiene ahí (P)" aria-label="Punto muerto">
+            <svg viewBox="0 0 44 24">
+              <circle cx="22" cy="12" r="9" />
+              <path d="M16 17 28 7" />
+            </svg></button></li>
+        <li><button class="tool" data-tool="activity" data-shape="activity" title="Acción (A)" aria-label="Acción">
+            <svg viewBox="0 0 44 28">
+              <rect x="2" y="3" width="40" height="22" rx="3" />
+            </svg></button></li>
+        <li><button class="tool" data-tool="decision" data-shape="decision" title="Decisión (D)" aria-label="Decisión">
+            <svg viewBox="0 0 44 32">
+              <path d="M22 2 42 16 22 30 2 16z" />
+            </svg></button></li>
+        <li><button class="tool" data-tool="fork" data-shape="bar" title="Paralelo: divide el flujo (F)"
+            aria-label="Fork">
+            <svg viewBox="0 0 24 32">
+              <rect x="9" y="2" width="6" height="28" />
+            </svg></button></li>
+        <li><button class="tool" data-tool="join" data-shape="bar" title="Paralelo: sincroniza el flujo (J)"
+            aria-label="Join">
+            <svg viewBox="0 0 24 32">
+              <rect x="9" y="2" width="6" height="28" />
+            </svg></button></li>
+        <li><button class="tool" data-tool="note" data-shape="note" title="Nota (N)" aria-label="Nota">
+            <svg viewBox="0 0 44 28">
+              <path d="M2 3h40v16H18l-6 6v-6H2z" />
+            </svg></button></li>
+        <li><button class="tool" data-tool="objeto" data-shape="object"
+            title="Objeto, con estado opcional entre &lt;&lt; &gt;&gt; (O)" aria-label="Objeto">
+            <svg viewBox="0 0 44 32">
+              <rect x="2" y="3" width="40" height="26" rx="0" />
+            </svg></button></li>
+        <li><button class="tool" data-tool="connect" data-shape="arrow"
+            title="Conectar (C): arrastra desde una bolita hasta otra; el clic derecho pone puntos de giro"
+            aria-label="Conectar">
+            <svg viewBox="0 0 44 24">
+              <path d="M4 12h30" />
+              <path d="M28 6l8 6-8 6" />
+            </svg></button></li>
+        <li><button class="tool" data-tool="delete" data-shape="trash" title="Eliminar (X)" aria-label="Eliminar">
+            <svg viewBox="0 0 24 24">
+              <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" />
+            </svg></button></li>
+      </ul>
+
+      <h2>Carriles</h2>
+      <button class="lane-add" id="btn-lane-add" title="Añadir carril">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+        <span>Añadir carril</span>
+      </button>
+      <ul class="lane-list" id="lane-list"></ul>
+
+      <div class="inspector" id="inspector">
+        <div id="inspector-body"></div>
+        <div class="issues" id="issues" hidden>
+          <h2>Validación</h2>
+          <ul id="issues-list"></ul>
+        </div>
+      </div>
+    </aside>
+
+    <main class="stage" id="stage">
+      <svg id="canvas" tabindex="0"
+        title="Doble clic para renombrar · Ctrl+C / Ctrl+V para copiar y pegar · con Conectar: clic derecho para poner puntos de giro · clic derecho para desplazar · rueda para zoom · Supr para eliminar">
+        <defs>
+          <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+            <path d="M24 0H0V24" fill="none" stroke="var(--grid)" stroke-width="1" />
+          </pattern>
+          <pattern id="grid-major" width="120" height="120" patternUnits="userSpaceOnUse">
+            <rect width="120" height="120" fill="url(#grid)" />
+            <path d="M120 0H0V120" fill="none" stroke="var(--grid-major)" stroke-width="1" />
+          </pattern>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7"
+            orient="auto-start-reverse">
+            <path d="M0 0 10 5 0 10z" fill="context-stroke" />
+          </marker>
+          <marker id="arrow-token" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8"
+            orient="auto-start-reverse">
+            <path d="M0 0 10 5 0 10z" fill="#ffffff" />
+          </marker>
+          <marker id="arrow-selected" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8"
+            orient="auto-start-reverse">
+            <path d="M0 0 10 5 0 10z" fill="#f4f4f6" />
+          </marker>
+        </defs>
+        <g id="viewport">
+          <rect id="grid-rect" x="-100000" y="-100000" width="200000" height="200000" fill="url(#grid-major)" />
+          <g id="layer-lanes"></g>
+          <g id="layer-edges"></g>
+          <g id="layer-nodes"></g>
+          <g id="layer-overlay"></g>
+        </g>
+      </svg>
+
+      <div class="sim-bar" id="sim-bar" hidden>
+        <span class="sim-status" id="sim-status">Simulación</span>
+        <label class="sim-var">var <input id="sim-var-name" value="x" size="4" /> = <input id="sim-var-value" value="3"
+            size="4" /></label>
+        <button class="btn icon" id="sim-reset" title="Reiniciar" aria-label="Reiniciar"><svg viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 10a8 8 0 1 1-1 6" />
+            <path d="M4 4v6h6" />
+          </svg></button>
+        <button class="btn icon" id="sim-back" title="Paso atrás" aria-label="Atrás"><svg viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 5v14" />
+            <path d="M18 6l-8 6 8 6" />
+          </svg></button>
+        <button class="btn icon primary" id="sim-step" title="Avanzar un paso" aria-label="Paso"><svg
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M6 6l8 6-8 6" />
+            <path d="M18 5v14" />
+          </svg></button>
+        <button class="btn icon" id="sim-run" title="Ejecutar" aria-label="Ejecutar"><svg viewBox="0 0 24 24"
+            fill="currentColor">
+            <path d="M8 5v14l11-7z" />
+          </svg></button>
+        <button class="btn icon" id="sim-exit" title="Salir de la simulación" aria-label="Salir"><svg
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg></button>
+      </div>
+
+      <div class="zoom-bar">
+        <button class="btn icon" id="zoom-out" title="Alejar">&minus;</button>
+        <span id="zoom-label">100%</span>
+        <button class="btn icon" id="zoom-in" title="Acercar">+</button>
+        <button class="btn icon" id="zoom-fit" title="Ajustar">⤢</button>
+      </div>
+    </main>
+
+    <footer class="statusbar">
+      <span id="status-sel">Sin selección</span>
+      <span class="sep"></span>
+      <span id="status-count">0 nodos · 0 flujos</span>
+    </footer>
+  </div>
+
+  <dialog id="prompt-dialog">
+    <form method="dialog">
+      <h3 id="prompt-title">Texto</h3>
+      <input id="prompt-input" type="text" autocomplete="off" />
+      <menu>
+        <button value="cancel" class="btn">Cancelar</button>
+        <button value="ok" class="btn primary">Aceptar</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+
+</html>
