@@ -258,8 +258,10 @@ export class Interaction {
       free: e.altKey,
       items,
       // Caja del grupo en su sitio de partida: el ajuste a rejilla se calcula
-      // sobre ella, para que el grupo se mueva rígido y no se descuadre.
-      box: unionBox(items),
+      // sobre ella, para que el grupo se mueva rígido y no se descuadre. Hay que
+      // pasar rectángulos con `x`/`y`: los `items` guardan el origen como
+      // `x0`/`y0` para que el arrastre no acumule errores.
+      box: unionBox(items.map((it) => ({ x: it.x0, y: it.y0, w: it.w, h: it.h }))),
     };
   }
 

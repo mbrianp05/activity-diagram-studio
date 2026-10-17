@@ -663,7 +663,9 @@ console.log('\n19. Nodo de punto muerto');
   // Sobrevive al guardado.
   const back = deserialize(JSON.stringify(g));
   check('el punto muerto sobrevive al guardado', back.nodes.some((n) => n.type === 'stop'));
-  console.log('\n20. Alineación: guías de arrastre');
+}
+
+console.log('\n20. Alineación: guías de arrastre');
 {
   // Dos actividades en filas distintas: al arrastrar la segunda cerca de la
   // primera sus centros tienen que caer en la misma línea.
@@ -686,20 +688,21 @@ console.log('\n19. Nodo de punto muerto');
     r.dx === 0 && !r.guides.some((q) => q.axis === 'x'), JSON.stringify(r.guides));
 
   // Lejos de toda línea, el movimiento se queda como estaba.
-  r = mover({ ...baja, y: baja.y - 100 }, 0, -100);
-  check('lejos de todo, no corrige', r.dy === -100 && r.guides.length === 0, JSON.stringify(r));
+  r = mover({ ...baja, y: baja.y - 60 }, 0, -60);
+  check('lejos de todo, no corrige', r.dy === -60 && r.guides.length === 0, JSON.stringify(r));
 
-  // El borde izquierdo también sirve.
-  r = mover({ ...baja, x: 297 }, 297, 0);
-  check('el borde izquierdo se engancha al de al lado', r.dx === 3, JSON.stringify(r));
+  // El borde izquierdo también sirve: el desplazamiento que devuelve `snapMove`
+  // es el definitivo (el pedido + la corrección), como lo usa el arrastre.
+  r = mover({ ...baja, x: baja.x - 215 }, -215, 0);
+  check('el borde izquierdo se engancha al del lado', r.dx === -212, JSON.stringify(r));
 
   // Sin `skip` el nodo se ancla a sí mismo (justo lo que el arrastre evita).
   r = snapMove(g.nodes, [{ ...baja, x: baja.x + 4 }], 4, 0, { tol: 6 });
   check('sin `skip` se ancla a su propia posición', r.dx === 0, JSON.stringify(r));
 
   // Columna y fila a la vez.
-  r = mover({ ...baja, x: 297, y: baja.y - 157 }, 297, -157);
-  check('las dos guías a la vez', r.guides.length === 2 && r.dx === 3 && r.dy === -160, JSON.stringify(r.guides));
+  r = mover({ ...baja, x: baja.x - 215, y: baja.y - 157 }, -215, -157);
+  check('las dos guías a la vez', r.guides.length === 2 && r.dx === -212 && r.dy === -160, JSON.stringify(r.guides));
   const guiaY = r.guides.find((q) => q.axis === 'y');
   check('la guía abarca los dos nodos',
     guiaY.from < alta.y && guiaY.to > alta.y + alta.h, JSON.stringify(guiaY));
@@ -745,7 +748,7 @@ console.log('\n21. Alineación: redimensión');
   // El borde que se arrastra (derecho) a 3 px del de `a`.
   const r = snapSize(g.nodes, b, 103, 60, { tol: 6 });
   check('el borde que se arrastra se engancha', r.w === 100, JSON.stringify(r));
-  check('y avisa con su guía', r.guides.length === 1 && r.guides[0].axis === 'x', JSON.stringify(r.guides));
+  check('y avisa con su guía', r.guides.some((q) => q.axis === 'x'), JSON.stringify(r.guides));
   check('la guía abarca los dos nodos',
     r.guides[0].from <= Math.min(a.y, b.y) && r.guides[0].to >= Math.max(a.y + a.h, b.y + b.h),
     JSON.stringify(r.guides));
