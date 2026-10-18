@@ -3,3 +3,4 @@ tmp-*.mjs
 *.log
 .DS_Store
 issues.txt
+.vscode
