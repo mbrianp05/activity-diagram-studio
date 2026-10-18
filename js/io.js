@@ -24,8 +24,10 @@ const STYLE = `
   .node.type-decision .node-shape { fill: #1a1a1e; stroke: #9a9aa3; }
   .node.type-fork .node-shape, .node.type-join .node-shape { fill: #0f0f11; stroke: #9a9aa3; }
   .node.type-note .node-shape { fill: #131316; stroke: #5e5e66; }
-  .node.type-stop .node-shape { fill: #101013; stroke: #8d8d96; }
-  .node-slash { stroke: #9a9aa3; stroke-linecap: round; }
+  .node.type-stop .node-shape { fill: #101013; stroke: #8d8d96; stroke-width: 1.6; }
+  .node.type-tiempo .node-shape { fill: #131316; stroke: #9a9aa3; }
+  .node-slash { stroke: #9a9aa3; stroke-linecap: butt; }
+  .node-deco-line { stroke: #6f6f78; }
   .node-dot { fill: #8d8d96; stroke: none; }
   .node-ring { fill: none; stroke: #6f6f78; stroke-width: 1.4; }
   .node-label { fill: #ecedf0; font: 13px "Segoe UI", Inter, system-ui, sans-serif; text-anchor: middle; dominant-baseline: middle; }

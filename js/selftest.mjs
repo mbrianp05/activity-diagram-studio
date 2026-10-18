@@ -10,6 +10,7 @@ import {
   nearestOnPolyline, END_RING_GAP, ARROW_GAP,
 } from './routing.js';
 import { unionBox, alignTargets, snapMove, snapSize, planAlign, planDistribute } from './align.js';
+import { shapeAttrs, tridentePuntos, ACTIVITY_RX } from './render.js';
 
 /** ¿Algún tramo del trazado atraviesa el interior del rectángulo? */
 function cruzaNodo(pts, r, margen = 1) {
@@ -826,6 +827,83 @@ console.log('\n22. Alineación: comandos del inspector');
   check('eje desconocido: nada', planDistribute(g, [h1.id, h2.id, h3.id], 'z').length === 0);
   check('si los nodos se pisan, no propone nada',
     planDistribute(g, [a.id, b.id, c.id], 'x').length === 0, JSON.stringify([a.x, b.x, c.x]));
+}
+
+console.log('\n23. Nodos de proceso, tiempo y notificación');
+{
+  const g = createDiagram();
+  const ini = createNode('start', 120, 300);
+  const pro = createNode('proceso', 360, 300, { label: 'Procesar' });
+  const tie = createNode('tiempo', 620, 300, { label: 'Esperar' });
+  const env = createNode('enviar', 880, 300, { label: 'Avisar' });
+  const rec = createNode('recibir', 1140, 300, { label: 'Recibido' });
+  const fin = createNode('end', 1400, 300);
+  g.nodes.push(ini, pro, tie, env, rec, fin);
+  g.edges.push(
+    createEdge(ini.id, pro.id),
+    createEdge(pro.id, tie.id),
+    createEdge(tie.id, env.id),
+    createEdge(env.id, rec.id),
+    createEdge(rec.id, fin.id),
+  );
+
+  check('existen los cuatro tipos nuevos', ['proceso', 'tiempo', 'enviar', 'recibir']
+    .every((t) => !!NODE_TYPES[t]), Object.keys(NODE_TYPES).join(','));
+  check('validación sin errores', summary(validate(g)).error === 0, JSON.stringify(validate(g)));
+  check('la simulación los atraviesa', run(g, {}).sim.finished);
+
+  // Enviar notificación: pico hacia fuera por la derecha.
+  const ps = shapeAttrs(env).attrs.points.split(' ').map((p) => p.split(',').map(Number));
+  const xsS = ps.map((p) => p[0]);
+  const ysS = ps.map((p) => p[1]);
+  check('enviar: el lado derecho sale en pico', Math.max(...xsS) === env.x + env.w, JSON.stringify(ps));
+  check('enviar: los otros tres lados son rectos',
+    ps.every((p) => (p[0] === env.x + env.w ? p[1] === env.y + env.h / 2 : p[1] === env.y || p[1] === env.y + env.h)),
+    JSON.stringify(ps));
+
+  // Recibir notificación: el pico entra hacia dentro por la izquierda.
+  const pr = shapeAttrs(rec).attrs.points.split(' ').map((p) => p.split(',').map(Number));
+  check('recibir: la muesca parte del borde izquierdo',
+    Math.min(...pr.map((p) => p[0])) === rec.x, JSON.stringify(pr));
+  check('recibir: los otros tres lados son rectos',
+    pr.every((p) => (p[0] === rec.x ? p[1] === rec.y + rec.h / 2 : p[1] === rec.y || p[1] === rec.y + rec.h)),
+    JSON.stringify(pr));
+
+  // Tiempo: reloj de arena (barras arriba y abajo y la cruz en el centro).
+  const pt = shapeAttrs(tie).attrs.points.split(' ').map((p) => p.split(',').map(Number));
+  const cx = tie.x + tie.w / 2;
+  const cy = tie.y + tie.h / 2;
+  check('tiempo: barras horizontales arriba y abajo',
+    pt.some((p) => p[0] === tie.x && p[1] === tie.y)
+    && pt.some((p) => p[0] === tie.x + tie.w && p[1] === tie.y + tie.h), JSON.stringify(pt));
+  check('tiempo: las diagonales se cruzan en el centro',
+    pt.filter((p) => p[0] === cx && p[1] === cy).length === 2, JSON.stringify(pt));
+
+  // Proceso: la misma caja redondeada que la actividad + tridente invertido.
+  const shapePro = shapeAttrs(pro);
+  check('proceso: misma caja que la actividad',
+    shapePro.tag === 'rect' && shapePro.attrs.rx === ACTIVITY_RX, JSON.stringify(shapePro));
+  const tr = tridentePuntos(pro);
+  check('proceso: tridente de cuatro trazos rectos', tr.length === 4, JSON.stringify(tr));
+  check('proceso: el tridente cae en la esquina inferior derecha y dentro del nodo',
+    tr.every((l) => l.x1 >= pro.x && l.y1 >= pro.y && l.x2 <= pro.x + pro.w && l.y2 <= pro.y + pro.h),
+    JSON.stringify(tr));
+  check('proceso: el tridente es corto, no alargado',
+    tr.every((l) => Math.max(Math.abs(l.x2 - l.x1), Math.abs(l.y2 - l.y1)) <= 16), JSON.stringify(tr));
+  check('proceso: las púas apuntan hacia abajo (tridente invertido)',
+    tr.filter((l) => l.x1 === l.x2).every((l) => l.y2 > l.y1) && tr.length - 1 === 3, JSON.stringify(tr));
+
+  // Sobreviven al guardado y se pueden cambiar de tipo en el inspector.
+  const back = deserialize(JSON.stringify(g));
+  check('los nodos nuevos sobreviven al guardado',
+    ['proceso', 'tiempo', 'enviar', 'recibir'].every((t) => back.nodes.some((n) => n.type === t)),
+    back.nodes.map((n) => n.type).join(','));
+
+  const abierto = deserialize(JSON.stringify({ ...g, nodes: g.nodes.map((n) => ({ ...n })) }));
+  abierto.nodes[1].type = 'activity';
+  check('cambiar de tipo no deja atributos del anterior',
+    shapeAttrs(abierto.nodes[1]).tag === 'rect' && shapeAttrs(abierto.nodes[1]).attrs.rx === 12,
+    JSON.stringify(shapeAttrs(abierto.nodes[1])));
 }
 
 console.log(`\n${pass} pruebas ok, ${fail} fallos\n`);

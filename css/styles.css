@@ -516,8 +516,16 @@ body {
 }
 .node-slash {
   stroke: #9a9aa3;
-  stroke-linecap: round;
+  stroke-linecap: butt;
   pointer-events: none;
+}
+.node-deco-line {
+  stroke: var(--node-stroke);
+  pointer-events: none;
+}
+.node.type-tiempo .node-shape {
+  fill: #131316;
+  stroke: #9a9aa3;
 }
 .node.type-start .node-shape,
 .node.type-end .node-shape {

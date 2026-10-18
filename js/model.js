@@ -34,6 +34,18 @@ export const NODE_TYPES = {
   // 1.5 veces mayor que el de inicio/fin (30 de lado por defecto, hasta 42).
   stop: { label: 'Punto muerto', shape: 'stop', w: 20 * STOP_SCALE, h: 20 * STOP_SCALE, minW: 12 * STOP_SCALE, minH: 12 * STOP_SCALE, terminal: true },
   activity: { label: 'Actividad', shape: 'activity', w: 176, h: 64, minW: 100, minH: 44 },
+  // Proceso: la misma caja redondeada que la acción, con un tridente invertido
+  // (una barra y sus tres púas hacia abajo) en la esquina inferior derecha.
+  proceso: { label: 'Proceso', shape: 'process', w: 176, h: 64, minW: 100, minH: 44 },
+  // Tiempo: la figura es el propio reloj de arena (dos barras horizontales y la
+  // cruz de las diagonales). No cabe texto dentro, así que el nombre va al lado.
+  tiempo: { label: 'Tiempo', shape: 'time', w: 120, h: 88, minW: 72, minH: 56 },
+  // Enviar notificación: caja de esquinas rectas que acaba en un pico hacia
+  // fuera por la derecha.
+  enviar: { label: 'Enviar notificación', shape: 'send', w: 176, h: 64, minW: 110, minH: 44 },
+  // Recibir notificación: la misma caja, con el pico metido hacia dentro por
+  // la izquierda (muesca).
+  recibir: { label: 'Recibir notificación', shape: 'receive', w: 176, h: 64, minW: 110, minH: 44 },
   // Objeto: caja de esquinas rectas con nombre y, opcionalmente, un estado
   // entre << >> debajo. Admite cualquier número de entradas y salidas.
   objeto: { label: 'Objeto', shape: 'object', w: 148, h: 60, minW: 96, minH: 48 },

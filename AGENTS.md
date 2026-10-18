@@ -90,9 +90,10 @@ El handler es global: respeta el guard `typing` (INPUT/TEXTAREA/SELECT) o romper
 
 ## Reglas de dominio que valida `validate.js`
 
-- Tipos de nodo: `start`, `end`, `stop` (punto muerto), `activity`, `objeto`, `decision`, `fork`, `join`, `note`. El **estado de un `objeto`** se guarda en `node.note` y se pinta entre `<< >>`; no añadas un campo nuevo.
+- Tipos de nodo: `start`, `end`, `stop` (punto muerto), `activity`, `proceso`, `tiempo`, `enviar`, `recibir`, `objeto`, `decision`, `fork`, `join`, `note`. El **estado de un `objeto`** se guarda en `node.note` y se pinta entre `<< >>`; no añadas un campo nuevo.
 - Un único nodo `start` (sin entradas, con salida); `end` y `stop` sin salida; `fork` ≥2 salidas; `join` ≥2 entradas.
-- `stop` se dibuja como un círculo con una diagonal de abajo a arriba (`shapeFor` + `g.__slash` en `render.js`); en el simulador termina el flujo como un `end`.
+- `stop` se dibuja como un círculo con una diagonal de izquierda a derecha (`g.__slash` en `render.js`): del mismo grosor que el círculo y de un borde al otro, sin holgura por medio. En el simulador termina el flujo como un `end`.
+- Figuras: `render.js:shapeAttrs(node)` es la **única** fuente de la forma de un nodo (elemento + atributos); la usan el nodo del diagrama y el fantasma de inserción de `interact.js:updateInsertPreview`. `romboPoints` (decisión), `relojPoints` (tiempo, reloj de arena), `enviarPoints` (pico hacia fuera por la derecha), `recibirPoints` (muesca hacia dentro por la izquierda) y `tridentePuntos` (tridente recto del proceso, esquina inferior derecha). `updateNode` reconstruye la figura cuando cambia el **tipo**, no sólo cuando cambia el elemento, para no dejar atributos del anterior.
 - `startSim()` aborta si hay issues con `level === 'error'`.
 - Las ramas de una `decision` **no** se autoetiquetan: la etiqueta la escribe el usuario (doble clic en la flecha o inspector) y la condición es lo que decide el simulador.
 - El simulador pide elección (`status === 'choice'`) cuando una decisión tiene varias salidas sin condición; `join` cuenta tokens y detecta bloqueos.

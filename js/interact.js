@@ -33,7 +33,7 @@ import {
   avoidNodes,
   nearestOnPolyline,
 } from "./routing.js";
-import { LANE_HEADER } from "./render.js";
+import { LANE_HEADER, shapeAttrs } from "./render.js";
 import { snapMove, snapSize, unionBox } from "./align.js";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -46,6 +46,19 @@ const ALIGN = 0.5;
  * generosa a propósito, pero independiente del zoom.
  */
 const GUIDE_PX = 6;
+
+/**
+ * Tipos de nodo que se nombran nada más aparecer: sin texto no dicen nada, así
+ * que al insertarlos se abre el diálogo con el nombre ya seleccionado.
+ */
+export const ASK_LABEL = [
+  "activity",
+  "decision",
+  "proceso",
+  "enviar",
+  "recibir",
+  "tiempo",
+];
 
 function svgEl(name, attrs = {}) {
   const n = document.createElementNS(NS, name);
@@ -407,8 +420,7 @@ export class Interaction {
     this.app.commit("Nodo creado");
     // Las acciones y las decisiones se nombran nada más aparecer: sin texto no
     // dicen nada, así que se pide el nombre en el acto.
-    if (type === "activity" || type === "decision")
-      this.app.editNodeLabel(node.id);
+    if (ASK_LABEL.includes(type)) this.app.editNodeLabel(node.id);
     return node;
   }
 
@@ -1056,41 +1068,17 @@ export class Interaction {
     if (!this.insertPreview || this.insertPreview.tool !== tool) {
       this.clearInsertPreview();
       const g = svgEl("g", { class: "insert-preview" });
-      let shape;
-      if (tool === "start" || tool === "end" || tool === "stop") {
-        shape = svgEl("circle", {
-          cx: 0,
-          cy: 0,
-          r: Math.min(t.w, t.h) / 2,
-          class: "ghost",
-        });
-      } else if (tool === "decision") {
-        shape = svgEl("polygon", { class: "ghost" });
-      } else {
-        shape = svgEl("rect", {
-          class: "ghost",
-          rx: tool === "activity" ? 12 : 0,
-        });
-      }
+      const shape = svgEl(shapeAttrs({ type: tool, x: 0, y: 0, w: t.w, h: t.h }).tag, {
+        class: "ghost",
+      });
       g.appendChild(shape);
       this.overlay.appendChild(g);
       this.insertPreview = { g, shape, tool };
     }
     const p = this.insertPreview;
-    if (tool === "start" || tool === "end" || tool === "stop") {
-      p.shape.setAttribute("cx", x + t.w / 2);
-      p.shape.setAttribute("cy", y + t.h / 2);
-    } else if (tool === "decision") {
-      const s = Math.max(t.w, t.h);
-      p.shape.setAttribute(
-        "points",
-        `${x + s / 2},${y} ${x + s},${y + s / 2} ${x + s / 2},${y + s} ${x},${y + s / 2}`,
-      );
-    } else {
-      p.shape.setAttribute("x", x);
-      p.shape.setAttribute("y", y);
-      p.shape.setAttribute("width", t.w);
-      p.shape.setAttribute("height", t.h);
+    for (const [k, v] of Object.entries(shapeAttrs({ type: tool, x, y, w: t.w, h: t.h }).attrs)) {
+      if (k === "class") continue;
+      p.shape.setAttribute(k, String(v));
     }
   }
 

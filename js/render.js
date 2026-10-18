@@ -60,52 +60,105 @@ export const ACTIVITY_RX = 12;
 const RING_W = 1.4;
 /** Trazo del círculo del punto muerto (`.node.type-stop .node-shape`). */
 const STOP_STROKE_W = 1.6;
-/** Grosor de la diagonal interior: siempre más fino que el círculo. */
-const STOP_SLASH_W = 1.2;
-/** Holgura entre la diagonal y el borde interior del círculo. */
-const STOP_SLASH_GAP = 1.6;
+/** Profundidad del pico del nodo de enviar/recibir notificación. */
+const PICO = 26;
+/** Tridente del nodo de proceso: una barra con tres púas rectas hacia abajo. */
+const TRIDENTE_W = 14;
+const TRIDENTE_H = 9;
+const TRIDENTE_MARGEN = 8;
 
 function dotRadius(node) {
   return Math.min(node.w, node.h) / 2;
 }
 
-/**
- * Media longitud de la diagonal del punto muerto, medida en cada eje (la línea
- * va a 45°, así que la punta está a `d · √2` del centro). Se recorta para que
- * ni la punta redonda (`stopSlashW / 2`) ni el grosor se salgan del círculo.
- */
-function stopSlashHalf(r) {
-  return Math.max(2, (r - STOP_STROKE_W / 2 - STOP_SLASH_GAP - STOP_SLASH_W / 2) / Math.SQRT2);
+/** Puntos de la decisión: cuadrado de puntas verticales. */
+export function romboPoints(x, y, w, h) {
+  return `${x + w / 2},${y} ${x + w},${y + h / 2} ${x + w / 2},${y + h} ${x},${y + h / 2}`;
 }
 
-function shapeFor(node) {
+/** Reloj de arena: barras horizontales arriba y abajo y la cruz de diagonales. */
+export function relojPoints(x, y, w, h) {
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  return `${x},${y} ${x + w},${y} ${cx},${cy} ${x + w},${y + h} ${x},${y + h} ${cx},${cy}`;
+}
+
+/** Enviar notificación: el pico sale hacia fuera por la derecha. */
+export function enviarPoints(x, y, w, h) {
+  const p = Math.min(PICO, w * 0.3);
+  return `${x},${y} ${x + w - p},${y} ${x + w},${y + h / 2} ${x + w - p},${y + h} ${x},${y + h}`;
+}
+
+/** Recibir notificación: el pico entra hacia dentro por la izquierda. */
+export function recibirPoints(x, y, w, h) {
+  const p = Math.min(PICO, w * 0.3);
+  return `${x + p},${y} ${x + w},${y} ${x + w},${y + h} ${x + p},${y + h} ${x},${y + h / 2}`;
+}
+
+/** Nota: rectángulo con la esquina superior derecha doblada. */
+function notaPoints(x, y, w, h) {
+  const fold = Math.min(18, h * 0.35);
+  return `${x},${y} ${x + w - fold},${y} ${x + w},${y + fold} ${x + w},${y + h} ${x},${y + h}`;
+}
+
+/** El tridente invertido del nodo de proceso (líneas rectas, sin curvas). */
+export function tridentePuntos(node) {
+  const w = Math.min(TRIDENTE_W, Math.max(0, node.w - TRIDENTE_MARGEN * 2));
+  const h = Math.min(TRIDENTE_H, Math.max(0, node.h - TRIDENTE_MARGEN * 2));
+  const x0 = node.x + node.w - TRIDENTE_MARGEN - w;
+  const y0 = node.y + node.h - TRIDENTE_MARGEN - h;
+  return [
+    { x1: x0, y1: y0, x2: x0 + w, y2: y0 },
+    { x1: x0, y1: y0, x2: x0, y2: y0 + h },
+    { x1: x0 + w / 2, y1: y0, x2: x0 + w / 2, y2: y0 + h },
+    { x1: x0 + w, y1: y0, x2: x0 + w, y2: y0 + h },
+  ];
+}
+
+/**
+ * Cómo es la figura de un nodo: etiqueta del elemento y sus atributos. Es la
+ * única fuente de la forma (la usan tanto el nodo del diagrama como el fantasma
+ * que preview la herramienta de inserción).
+ */
+export function shapeAttrs(node) {
   const { x, y, w, h, type } = node;
+  const poly = (points, join = 'miter') => ({
+    tag: 'polygon',
+    attrs: { points, class: 'node-shape', 'stroke-linejoin': join, 'stroke-miterlimit': 4 },
+  });
   switch (type) {
     case 'start':
     case 'end':
       // Nodos inicial/final: círculos relleno (el final añade su contorno en updateNode).
-      return el('circle', { cx: x + w / 2, cy: y + h / 2, r: dotRadius(node), class: 'node-shape node-dot' });
+      return { tag: 'circle', attrs: { cx: x + w / 2, cy: y + h / 2, r: dotRadius(node), class: 'node-shape node-dot' } };
     case 'stop':
-      // Punto muerto: círculo con una diagonal de abajo a arriba (updateNode la dibuja).
-      return el('circle', { cx: x + w / 2, cy: y + h / 2, r: dotRadius(node), class: 'node-shape node-stop-dot' });
+      // Punto muerto: círculo con una diagonal (updateNode la dibuja encima).
+      return { tag: 'circle', attrs: { cx: x + w / 2, cy: y + h / 2, r: dotRadius(node), class: 'node-shape node-stop-dot' } };
     case 'activity':
-      return el('rect', { x, y, width: w, height: h, rx: ACTIVITY_RX, ry: ACTIVITY_RX, class: 'node-shape' });
-    case 'decision': {
-      const pts = `${x + w / 2},${y} ${x + w},${y + h / 2} ${x + w / 2},${y + h} ${x},${y + h / 2}`;
-      return el('polygon', { points: pts, class: 'node-shape', 'stroke-linejoin': 'miter', 'stroke-miterlimit': 4 });
-    }
+    case 'proceso':
+      return { tag: 'rect', attrs: { x, y, width: w, height: h, rx: ACTIVITY_RX, ry: ACTIVITY_RX, class: 'node-shape' } };
+    case 'decision':
+      return poly(romboPoints(x, y, w, h));
+    case 'tiempo':
+      return poly(relojPoints(x, y, w, h), 'round');
+    case 'enviar':
+      return poly(enviarPoints(x, y, w, h));
+    case 'recibir':
+      return poly(recibirPoints(x, y, w, h));
     case 'fork':
     case 'join':
       // Barra de paralelismo: banda fina, alta y de esquinas rectas.
-      return el('rect', { x, y, width: w, height: h, class: 'node-shape node-bar' });
-    case 'note': {
-      const fold = Math.min(18, h * 0.35);
-      const pts = `${x},${y} ${x + w - fold},${y} ${x + w},${y + fold} ${x + w},${y + h} ${x},${y + h}`;
-      return el('polygon', { points: pts, class: 'node-shape', 'stroke-linejoin': 'miter', 'stroke-miterlimit': 4 });
-    }
+      return { tag: 'rect', attrs: { x, y, width: w, height: h, class: 'node-shape node-bar' } };
+    case 'note':
+      return poly(notaPoints(x, y, w, h));
     default:
-      return el('rect', { x, y, width: w, height: h, class: 'node-shape' });
+      return { tag: 'rect', attrs: { x, y, width: w, height: h, class: 'node-shape' } };
   }
+}
+
+function shapeFor(node) {
+  const { tag, attrs } = shapeAttrs(node);
+  return el(tag, attrs);
 }
 
 /** Puntos de conexión que se muestran al seleccionar un nodo. */
@@ -243,11 +296,15 @@ export class Renderer {
     const g = el('g', { class: `node type-${node.type}`, 'data-id': node.id });
     g.__glow = el('rect', { class: 'node-token-glow', rx: 12 }, g);
     g.__shape = shapeFor(node);
+    g.__type = node.type;
     g.appendChild(g.__shape);
     g.__ring = null; // contorno exterior del nodo final
     // Diagonal interior del punto muerto (de abajo a arriba), sobre la figura.
     g.__slash = el('line', { class: 'node-slash', opacity: 0 });
     g.appendChild(g.__slash);
+    // Adornos sobre la figura (el tridente del nodo de proceso).
+    g.__deco = el('g', { class: 'node-deco' });
+    g.appendChild(g.__deco);
     g.__labels = el('g', {}, g);
     g.__hit = el('rect', { class: 'node-hit' }, g);
     g.__handles = el('g', {}, g);
@@ -264,49 +321,42 @@ export class Renderer {
       state.tokens?.has(node.id) ? ' token' : ''}${
       state.errorNodes?.has(node.id) ? ' error' : ''}`);
 
-    // Si cambió el tipo, reconstruir la forma (rect <-> polygon <-> circle).
-    const wantTag = node.type === 'decision' || node.type === 'note'
-      ? 'polygon'
-      : (node.type === 'start' || node.type === 'end' || node.type === 'stop') ? 'circle' : 'rect';
-    if (g.__shape.tagName !== wantTag) {
+    // La figura se reconstruye si cambia de tipo (no sólo si cambia de
+    // elemento): así no quedan atributos del tipo anterior pegados.
+    const { tag, attrs } = shapeAttrs(node);
+    if (g.__shape.tagName !== tag || g.__type !== node.type) {
       g.__shape.remove();
       g.__shape = shapeFor(node);
+      g.__type = node.type;
       g.insertBefore(g.__shape, g.__slash);
     }
     const shape = g.__shape;
-    if (node.type === 'decision') {
-      const s = Math.max(node.w, node.h);
-      shape.setAttribute('points', `${node.x + s / 2},${node.y} ${node.x + s},${node.y + s / 2} ${node.x + s / 2},${node.y + s} ${node.x},${node.y + s / 2}`);
-    } else if (node.type === 'note') {
-      const fold = Math.min(18, node.h * 0.35);
-      shape.setAttribute('points', `${node.x},${node.y} ${node.x + node.w - fold},${node.y} ${node.x + node.w},${node.y + fold} ${node.x + node.w},${node.y + node.h} ${node.x},${node.y + node.h}`);
-    } else if (node.type === 'start' || node.type === 'end' || node.type === 'stop') {
-      shape.setAttribute('cx', node.x + node.w / 2);
-      shape.setAttribute('cy', node.y + node.h / 2);
-      shape.setAttribute('r', dotRadius(node));
-    } else {
-      shape.setAttribute('x', node.x);
-      shape.setAttribute('y', node.y);
-      shape.setAttribute('width', node.w);
-      shape.setAttribute('height', node.h);
-      if (node.type === 'activity') {
-        shape.setAttribute('rx', ACTIVITY_RX);
-        shape.setAttribute('ry', ACTIVITY_RX);
+    for (const [k, v] of Object.entries(attrs)) shape.setAttribute(k, String(v));
+
+    const deco = g.__deco;
+    deco.textContent = '';
+    if (node.type === 'proceso') {
+      for (const l of tridentePuntos(node)) {
+        el('line', {
+          x1: l.x1, y1: l.y1, x2: l.x2, y2: l.y2,
+          class: 'node-deco-line', 'stroke-width': 1.4,
+        }, deco);
       }
     }
 
-    // Diagonal del punto muerto: de abajo a arriba, dentro del círculo.
+    // Diagonal del punto muerto: de izquierda a derecha, con el mismo
+    // grosor que el círculo y de un borde al otro (sin holgura por medio).
     const slash = g.__slash;
     if (node.type === 'stop') {
       const r = dotRadius(node);
       const cx = node.x + node.w / 2;
       const cy = node.y + node.h / 2;
-      const d = stopSlashHalf(r);
+      const d = r / Math.SQRT2;
       slash.setAttribute('x1', cx - d);
       slash.setAttribute('y1', cy + d);
       slash.setAttribute('x2', cx + d);
       slash.setAttribute('y2', cy - d);
-      slash.setAttribute('stroke-width', STOP_SLASH_W);
+      slash.setAttribute('stroke-width', STOP_STROKE_W);
       slash.setAttribute('opacity', '1');
     } else {
       slash.setAttribute('opacity', '0');
@@ -351,10 +401,12 @@ export class Renderer {
     labels.textContent = '';
     const cx = node.x + node.w / 2;
     const cy = node.y + node.h / 2;
-if (node.type === 'start' || node.type === 'end' || node.type === 'stop') {
+    if (node.type === 'start' || node.type === 'end' || node.type === 'stop') {
       // Los nodos inicial/final/punto muerto no llevan texto (notación UML).
-    } else if (node.type === 'fork' || node.type === 'join') {
-      const vertical = node.h > node.w;
+    } else if (node.type === 'fork' || node.type === 'join' || node.type === 'tiempo') {
+      // Barras y reloj de arena: el nombre va fuera de la figura (el reloj de
+      // arena no tiene hueco dentro).
+      const vertical = node.type !== 'tiempo' && node.h > node.w;
       const t1 = el('text', { class: 'node-label', 'font-size': 11.5 }, labels);
       t1.textContent = node.label;
       if (vertical) {
