@@ -4,18 +4,39 @@
  * zoom y atajos de teclado.
  */
 import {
-  NODE_TYPES, createNode, createEdge, addEdge, removeNode, removeEdge,
-  nodeAt, edgeAt, shiftLanes, inEdges, outEdges, nodeById, edgeById, readWay,
-  cloneDiagram, dotMax,
-} from './model.js';
+  NODE_TYPES,
+  createNode,
+  createEdge,
+  addEdge,
+  removeNode,
+  removeEdge,
+  nodeAt,
+  edgeAt,
+  shiftLanes,
+  inEdges,
+  outEdges,
+  nodeById,
+  edgeById,
+  readWay,
+  cloneDiagram,
+  dotMax,
+} from "./model.js";
 import {
-  edgeGeometry, edgePath, anchors, anchorFor, sideNormal, sideNear,
-  userRouteTip, guidePoint, avoidNodes, nearestOnPolyline,
-} from './routing.js';
-import { LANE_HEADER } from './render.js';
-import { snapMove, snapSize, unionBox } from './align.js';
+  edgeGeometry,
+  edgePath,
+  anchors,
+  anchorFor,
+  sideNormal,
+  sideNear,
+  userRouteTip,
+  guidePoint,
+  avoidNodes,
+  nearestOnPolyline,
+} from "./routing.js";
+import { LANE_HEADER } from "./render.js";
+import { snapMove, snapSize, unionBox } from "./align.js";
 
-const NS = 'http://www.w3.org/2000/svg';
+const NS = "http://www.w3.org/2000/svg";
 const GRID = 8;
 /** Tolerancia para considerar dos puntos el mismo. */
 const ALIGN = 0.5;
@@ -36,7 +57,7 @@ export class Interaction {
   constructor(app) {
     this.app = app;
     this.svg = app.svg;
-    this.overlay = app.svg.querySelector('#layer-overlay');
+    this.overlay = app.svg.querySelector("#layer-overlay");
     this.drag = null;
     this.spaceDown = false;
     this.tempEdge = null;
@@ -62,7 +83,10 @@ export class Interaction {
   toWorld(clientX, clientY) {
     const r = this.svg.getBoundingClientRect();
     const v = this.app.diagram.view;
-    return { x: (clientX - r.left - v.x) / v.k, y: (clientY - r.top - v.y) / v.k };
+    return {
+      x: (clientX - r.left - v.x) / v.k,
+      y: (clientY - r.top - v.y) / v.k,
+    };
   }
 
   /** Punto del mundo bajo el puntero (sólo si está sobre el lienzo). */
@@ -78,26 +102,36 @@ export class Interaction {
     return { x: (r.width / 2 - v.x) / v.k, y: (r.height / 2 - v.y) / v.k };
   }
 
-  get snap() { return this.app.snapToGrid; }
+  get snap() {
+    return this.app.snapToGrid;
+  }
 
   snapPoint(p, free) {
     if (free || !this.snap) return p;
-    return { x: Math.round(p.x / GRID) * GRID, y: Math.round(p.y / GRID) * GRID };
+    return {
+      x: Math.round(p.x / GRID) * GRID,
+      y: Math.round(p.y / GRID) * GRID,
+    };
   }
 
   /* ------------------------------ eventos ---------------------------- */
 
   bind() {
-    this.svg.addEventListener('pointerdown', (e) => this.onPointerDown(e));
-    window.addEventListener('pointermove', (e) => this.onPointerMove(e));
-    window.addEventListener('pointerup', (e) => this.onPointerUp(e));
-    this.svg.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
-    this.svg.addEventListener('dblclick', (e) => this.onDblClick(e));
-    this.svg.addEventListener('pointerleave', () => this.clearInsertPreview());
-    this.svg.addEventListener('contextmenu', (e) => e.preventDefault());
-    window.addEventListener('keydown', (e) => this.onKeyDown(e));
-    window.addEventListener('keyup', (e) => {
-      if (e.code === 'Space') { this.spaceDown = false; this.svg.style.cursor = ''; }
+    this.svg.addEventListener("pointerdown", (e) => this.onPointerDown(e));
+    window.addEventListener("pointermove", (e) => this.onPointerMove(e));
+    window.addEventListener("pointerup", (e) => this.onPointerUp(e));
+    this.svg.addEventListener("wheel", (e) => this.onWheel(e), {
+      passive: false,
+    });
+    this.svg.addEventListener("dblclick", (e) => this.onDblClick(e));
+    this.svg.addEventListener("pointerleave", () => this.clearInsertPreview());
+    this.svg.addEventListener("contextmenu", (e) => e.preventDefault());
+    window.addEventListener("keydown", (e) => this.onKeyDown(e));
+    window.addEventListener("keyup", (e) => {
+      if (e.code === "Space") {
+        this.spaceDown = false;
+        this.svg.style.cursor = "";
+      }
     });
   }
 
@@ -106,7 +140,7 @@ export class Interaction {
     this.clearInsertPreview();
     const target = e.target;
     const puntoCtrl = target?.dataset?.routePoint;
-    const esCtrl = puntoCtrl !== undefined && this.app.tool === 'route';
+    const esCtrl = puntoCtrl !== undefined && this.app.tool === "route";
 
     // Botón derecho durante el trazado: nuevo punto de control (cambia el giro).
     if (e.button === 2 && this.route) {
@@ -135,7 +169,10 @@ export class Interaction {
     if (this.route) {
       const destino = this.targetAt(w, 30);
       if (destino && destino.node.id !== this.route.from) {
-        this.finishRoute(destino.node.id, destino.side || sideNear(destino.node, w));
+        this.finishRoute(
+          destino.node.id,
+          destino.side || sideNear(destino.node, w),
+        );
       } else {
         this.addRoutePoint();
       }
@@ -148,9 +185,10 @@ export class Interaction {
     }
     // Herramienta de trayectoria: clic sobre la flecha para fijar un giro (si
     // no hay flecha debajo, el clic selecciona el nodo como cualquier otro).
-    if (this.app.tool === 'route') {
-      const nodo = target.closest?.('.node');
-      if (nodo && !this.nearEdge(w)) this.app.select({ type: 'node', id: nodo.dataset.id });
+    if (this.app.tool === "route") {
+      const nodo = target.closest?.(".node");
+      if (nodo && !this.nearEdge(w))
+        this.app.select({ type: "node", id: nodo.dataset.id });
       else this.insertRoutePoint(w);
       return;
     }
@@ -161,16 +199,21 @@ export class Interaction {
     }
     // Punto de conexión
     if (target.dataset && target.dataset.handle) {
-      this.beginConnectDrag(e, w, target.dataset.nodeId || this.nodeIdFrom(target), target.dataset.handle);
+      this.beginConnectDrag(
+        e,
+        w,
+        target.dataset.nodeId || this.nodeIdFrom(target),
+        target.dataset.handle,
+      );
       return;
     }
     // Clic cerca de una bolita (sin tener que tocarla): la flecha sale por ese
     // lado. Sólo con las herramientas que conectan o seleccionan, para no
     // quitarle el arrastre al resto de gestos.
-    if (this.app.tool === 'select' || this.app.tool === 'connect') {
+    if (this.app.tool === "select" || this.app.tool === "connect") {
       const cerca = this.portAt(w, 12);
       if (cerca) {
-        this.app.select({ type: 'node', id: cerca.node.id });
+        this.app.select({ type: "node", id: cerca.node.id });
         this.beginConnectDrag(e, w, cerca.node.id, cerca.side);
         return;
       }
@@ -186,7 +229,7 @@ export class Interaction {
     }
     // Etiqueta de flujo: un clic sólo selecciona (el doble clic la edita).
     if (target.dataset && target.dataset.edgeLabel) {
-      const ref = { type: 'edge', id: target.dataset.edgeLabel };
+      const ref = { type: "edge", id: target.dataset.edgeLabel };
       if (e.ctrlKey || e.metaKey || e.shiftKey) this.app.toggleSelect(ref);
       else this.app.select(ref);
       return;
@@ -194,14 +237,17 @@ export class Interaction {
     // Flujo
     if (target.dataset && target.dataset.edge) {
       const edgeId = target.dataset.edge;
-      if (this.app.tool === 'delete') { this.app.deleteSelection({ type: 'edge', id: edgeId }); return; }
-      const ref = { type: 'edge', id: edgeId };
+      if (this.app.tool === "delete") {
+        this.app.deleteSelection({ type: "edge", id: edgeId });
+        return;
+      }
+      const ref = { type: "edge", id: edgeId };
       if (e.ctrlKey || e.metaKey) this.app.toggleSelect(ref);
       else this.app.select(ref);
       return;
     }
     // Nodo
-    const nodeEl = target.closest('.node');
+    const nodeEl = target.closest(".node");
     if (nodeEl) {
       const id = nodeEl.dataset.id;
       this.onNodeDown(e, id, w);
@@ -213,7 +259,7 @@ export class Interaction {
   }
 
   nodeIdFrom(target) {
-    const g = target.closest('.node');
+    const g = target.closest(".node");
     return g ? g.dataset.id : null;
   }
 
@@ -222,29 +268,34 @@ export class Interaction {
     if (!node) return;
     const tool = this.app.tool;
 
-    if (tool === 'delete') { this.app.deleteSelection({ type: 'node', id }); return; }
-
-    if (tool === 'connect') {
-      this.app.select({ type: 'node', id });
-      this.beginConnectDrag(e, w, id, 'auto');
+    if (tool === "delete") {
+      this.app.deleteSelection({ type: "node", id });
       return;
     }
 
-    if (NODE_TYPES[tool] && tool !== 'select') {
+    if (tool === "connect") {
+      this.app.select({ type: "node", id });
+      this.beginConnectDrag(e, w, id, "auto");
+      return;
+    }
+
+    if (NODE_TYPES[tool] && tool !== "select") {
       this.placeNode(tool, w);
       return;
     }
 
     // Selección / arrastre
     const sel = this.app.state.selected;
-    const already = this.app.isSelected({ type: 'node', id });
+    const already = this.app.isSelected({ type: "node", id });
     if (e.shiftKey || e.ctrlKey || e.metaKey) {
       // Ctrl (o Shift) añade o quita nodos de la selección.
-      this.app.toggleSelect({ type: 'node', id });
+      this.app.toggleSelect({ type: "node", id });
     } else if (!already) {
-      this.app.select({ type: 'node', id });
+      this.app.select({ type: "node", id });
     }
-    const ids = this.app.state.selected.filter((s) => s.type === 'node').map((s) => s.id);
+    const ids = this.app.state.selected
+      .filter((s) => s.type === "node")
+      .map((s) => s.id);
     if (!ids.includes(id)) return;
     const items = ids.map((i) => {
       const n = nodeById(this.app.diagram, i);
@@ -252,7 +303,7 @@ export class Interaction {
     });
     this.clearAlignGuides();
     this.drag = {
-      kind: 'nodes',
+      kind: "nodes",
       start: w,
       moved: false,
       free: e.altKey,
@@ -261,33 +312,45 @@ export class Interaction {
       // sobre ella, para que el grupo se mueva rígido y no se descuadre. Hay que
       // pasar rectángulos con `x`/`y`: los `items` guardan el origen como
       // `x0`/`y0` para que el arrastre no acumule errores.
-      box: unionBox(items.map((it) => ({ x: it.x0, y: it.y0, w: it.w, h: it.h }))),
+      box: unionBox(
+        items.map((it) => ({ x: it.x0, y: it.y0, w: it.w, h: it.h })),
+      ),
     };
   }
 
   onBackgroundDown(e, w) {
     const tool = this.app.tool;
-    if (tool === 'delete') {
+    if (tool === "delete") {
       // Con la goma, acertar cerca de una flecha fina también la borra.
       const nearDel = this.nearEdge(w);
-      if (nearDel) this.app.deleteSelection({ type: 'edge', id: nearDel.id });
+      if (nearDel) this.app.deleteSelection({ type: "edge", id: nearDel.id });
       else this.app.clearSelection();
       return;
     }
-    if (tool === 'connect') { this.app.clearSelection(); this.connectMode = null; return; }
-    if (NODE_TYPES[tool]) { this.placeNode(tool, w); return; }
+    if (tool === "connect") {
+      this.app.clearSelection();
+      this.connectMode = null;
+      return;
+    }
+    if (NODE_TYPES[tool]) {
+      this.placeNode(tool, w);
+      return;
+    }
     // Clic que falla el trazo por poco: si hay una flecha cerca (tolerancia
     // compensada por zoom) se selecciona en vez de limpiar o enmarcar.
     const near = this.nearEdge(w);
     if (near) {
-      const ref = { type: 'edge', id: near.id };
+      const ref = { type: "edge", id: near.id };
       if (e.ctrlKey || e.metaKey || e.shiftKey) this.app.toggleSelect(ref);
       else this.app.select(ref);
       return;
     }
     if (!e.shiftKey) this.app.clearSelection();
     this.marquee = {
-      x0: w.x, y0: w.y, x: w.x, y: w.y,
+      x0: w.x,
+      y0: w.y,
+      x: w.x,
+      y: w.y,
       base: e.shiftKey ? [...this.app.state.selected] : [],
     };
     this.drawMarquee();
@@ -308,7 +371,11 @@ export class Interaction {
    */
   snapSpot(type, wx, wy) {
     const t = NODE_TYPES[type];
-    const cuadrado = type === 'decision' || type === 'start' || type === 'end' || type === 'stop';
+    const cuadrado =
+      type === "decision" ||
+      type === "start" ||
+      type === "end" ||
+      type === "stop";
     const w = cuadrado ? Math.max(t.w, t.h) : t.w;
     const h = cuadrado ? Math.max(t.w, t.h) : t.h;
     let x = Math.round(wx - w / 2);
@@ -327,7 +394,7 @@ export class Interaction {
   placeNode(type, w) {
     const d = this.app.diagram;
     const spot = this.snapSpot(type, w.x, w.y);
-    this.app.pushHistory('Crear nodo');
+    this.app.pushHistory("Crear nodo");
     const node = createNode(type, w.x, w.y);
     node.x = spot.x;
     node.y = spot.y;
@@ -335,12 +402,13 @@ export class Interaction {
     d.nodes.push(node);
     // Tras insertar se vuelve a la herramienta de selección: encadenar varios
     // nodos se hace con arrastrar y soltar, no con pulsar la tecla cada vez.
-    this.app.setTool('select');
-    this.app.select({ type: 'node', id: node.id });
-    this.app.commit('Nodo creado');
+    this.app.setTool("select");
+    this.app.select({ type: "node", id: node.id });
+    this.app.commit("Nodo creado");
     // Las acciones y las decisiones se nombran nada más aparecer: sin texto no
     // dicen nada, así que se pide el nombre en el acto.
-    if (type === 'activity' || type === 'decision') this.app.editNodeLabel(node.id);
+    if (type === "activity" || type === "decision")
+      this.app.editNodeLabel(node.id);
     return node;
   }
 
@@ -349,50 +417,82 @@ export class Interaction {
   beginPan(e, useLast = false) {
     const v = this.app.diagram.view;
     const src = useLast && this.last ? this.last : e;
-    this.drag = { kind: 'pan', x0: src.x, y0: src.y, vx: v.x, vy: v.y };
-    this.svg.style.cursor = 'grabbing';
+    this.drag = { kind: "pan", x0: src.x, y0: src.y, vx: v.x, vy: v.y };
+    this.svg.style.cursor = "grabbing";
   }
 
   beginResize(e, w) {
-    const sel = this.app.state.selected.find((s) => s.type === 'node');
+    const sel = this.app.state.selected.find((s) => s.type === "node");
     if (!sel) return;
     const n = nodeById(this.app.diagram, sel.id);
-    this.app.pushHistory('Redimensionar');
-    this.drag = { kind: 'resize', node: n, w0: n.w, h0: n.h, start: w, moved: false };
+    this.app.pushHistory("Redimensionar");
+    this.drag = {
+      kind: "resize",
+      node: n,
+      w0: n.w,
+      h0: n.h,
+      start: w,
+      moved: false,
+    };
   }
 
   beginLaneResize(e, w, index) {
     const lane = this.app.diagram.lanes[index];
     if (!lane) return;
-    this.app.pushHistory('Redimensionar carril');
-    this.drag = { kind: 'lane', lane, index, h0: lane.height, start: w, moved: false };
+    this.app.pushHistory("Redimensionar carril");
+    this.drag = {
+      kind: "lane",
+      lane,
+      index,
+      h0: lane.height,
+      start: w,
+      moved: false,
+    };
   }
 
   beginConnectDrag(e, w, nodeId, side) {
     const node = nodeById(this.app.diagram, nodeId);
     if (!node) return;
-    const other = this.app.state.selected.find((s) => s.type === 'node' && s.id !== nodeId);
-    if (other && this.app.tool === 'connect') {
+    const other = this.app.state.selected.find(
+      (s) => s.type === "node" && s.id !== nodeId,
+    );
+    if (other && this.app.tool === "connect") {
       // Dos nodos ya seleccionados y clic sobre otro: conexión directa, con
       // la bolita de cada lado más cercana al puntero.
-      this.app.addConnection(other.id, nodeId, [], sideNear(nodeById(this.app.diagram, other.id), w), sideNear(node, w));
+      this.app.addConnection(
+        other.id,
+        nodeId,
+        [],
+        sideNear(nodeById(this.app.diagram, other.id), w),
+        sideNear(node, w),
+      );
       return;
     }
     // La bolita por la que sale la flecha es la que se ha pulsado; si el clic
     // ha caído en el cuerpo del nodo, se usa el lado que mira al puntero.
-    this.startRoute(nodeId, side && side !== 'auto' ? side : sideNear(node, w));
-    this.drag = { kind: 'connect', from: nodeId, moved: false };
+    this.startRoute(nodeId, side && side !== "auto" ? side : sideNear(node, w));
+    this.drag = { kind: "connect", from: nodeId, moved: false };
   }
 
   /* --------------------------- trayectoria --------------------------- */
 
   /** Arranca el trazado de un flujo desde `from`, saliendo por `side`. */
   startRoute(from, side) {
-    this.route = { from, fromSide: side, toSide: 'left', way: [], axis: null, tip: null, hover: null };
-    this.tempEdge = svgEl('path', { class: 'temp-edge' });
+    this.route = {
+      from,
+      fromSide: side,
+      toSide: "left",
+      way: [],
+      axis: null,
+      tip: null,
+      hover: null,
+    };
+    this.tempEdge = svgEl("path", { class: "temp-edge" });
     this.overlay.appendChild(this.tempEdge);
-    this.app.select({ type: 'node', id: from });
-    this.app.status(`Sale por ${labelSide(side)} · mueve el cursor para guiar la flecha · clic derecho para un punto de giro · clic en la bolita del destino`);
+    this.app.select({ type: "node", id: from });
+    this.app.status(
+      `Sale por ${labelSide(side)} · mueve el cursor para guiar la flecha · clic derecho para un punto de giro · clic en la bolita del destino`,
+    );
     this.drawRouteHandles();
   }
 
@@ -410,10 +510,17 @@ export class Interaction {
     const tol = Math.max(12, tolPantalla / k);
     let mejor = null;
     for (const n of d.nodes) {
-      if (w.x < n.x - tol || w.x > n.x + n.w + tol || w.y < n.y - tol || w.y > n.y + n.h + tol) continue;
+      if (
+        w.x < n.x - tol ||
+        w.x > n.x + n.w + tol ||
+        w.y < n.y - tol ||
+        w.y > n.y + n.h + tol
+      )
+        continue;
       for (const p of this.app.renderer.portsOf(n)) {
         const dist = Math.hypot(p.x - w.x, p.y - w.y);
-        if (dist <= tol && (!mejor || dist < mejor.dist)) mejor = { node: n, side: p.side, p, dist };
+        if (dist <= tol && (!mejor || dist < mejor.dist))
+          mejor = { node: n, side: p.side, p, dist };
       }
     }
     return mejor;
@@ -434,25 +541,33 @@ export class Interaction {
   /** Bolita fantasma: por dónde sale o entra la flecha, ya en su posición final. */
   drawHint(kind, p) {
     if (!this.hintLayer) {
-      this.hintLayer = svgEl('g', { class: 'port-hints' });
+      this.hintLayer = svgEl("g", { class: "port-hints" });
       this.overlay.appendChild(this.hintLayer);
     }
     const prev = this.hintLayer.querySelector(`.port-hint.${kind}`);
-    if (!p) { prev?.remove(); return; }
-    const r = 6.5 / (this.app.diagram.view.k || 1);
-    if (prev) {
-      prev.setAttribute('cx', p.x);
-      prev.setAttribute('cy', p.y);
-      prev.setAttribute('r', r);
+    if (!p) {
+      prev?.remove();
       return;
     }
-    this.hintLayer.appendChild(svgEl('circle', {
-      class: `port-hint ${kind}`, cx: p.x, cy: p.y, r,
-    }));
+    const r = 6.5 / (this.app.diagram.view.k || 1);
+    if (prev) {
+      prev.setAttribute("cx", p.x);
+      prev.setAttribute("cy", p.y);
+      prev.setAttribute("r", r);
+      return;
+    }
+    this.hintLayer.appendChild(
+      svgEl("circle", {
+        class: `port-hint ${kind}`,
+        cx: p.x,
+        cy: p.y,
+        r,
+      }),
+    );
   }
 
   clearPortHints() {
-    if (this.hintLayer) this.hintLayer.textContent = '';
+    if (this.hintLayer) this.hintLayer.textContent = "";
   }
 
   /**
@@ -466,7 +581,7 @@ export class Interaction {
     const w = this.toWorld(e.clientX, e.clientY);
     const t = this.targetAt(w, 26);
     r.hover = t && t.node.id !== r.from ? t.node : null;
-    r.toSide = r.hover ? (t.side || sideNear(r.hover, w)) : 'left';
+    r.toSide = r.hover ? t.side || sideNear(r.hover, w) : "left";
     this.drawTempEdge(w);
   }
 
@@ -476,9 +591,12 @@ export class Interaction {
     if (!r || !r.tip) return;
     const p = avoidNodes(r.tip, this.app.diagram.nodes);
     const last = r.way[r.way.length - 1];
-    if (last && Math.abs(last.x - p.x) < 1 && Math.abs(last.y - p.y) < 1) return;
+    if (last && Math.abs(last.x - p.x) < 1 && Math.abs(last.y - p.y) < 1)
+      return;
     r.way.push({ x: Math.round(p.x), y: Math.round(p.y) });
-    this.app.status(`${r.way.length} punto(s) de giro · clic en el destino para cerrar el flujo · Esc cancela`);
+    this.app.status(
+      `${r.way.length} punto(s) de giro · clic en el destino para cerrar el flujo · Esc cancela`,
+    );
     this.drawRouteHandles();
     if (this.last) this.drawTempEdge();
   }
@@ -504,7 +622,10 @@ export class Interaction {
   /** Inserta un punto de giro donde se ha clicado sobre la flecha. */
   insertRoutePoint(w) {
     const edge = this.nearEdge(w);
-    if (!edge) { this.app.clearSelection(); return; }
+    if (!edge) {
+      this.app.clearSelection();
+      return;
+    }
     const geo = edgeGeometry(this.app.diagram, edge);
     const p = nearestOnPolyline(geo?.pts || [], w.x, w.y);
     if (!p) return;
@@ -513,21 +634,33 @@ export class Interaction {
     const snapped = this.snapPoint(p, false);
     edge.way = readWay(edge.way);
     edge.way.push({ x: Math.round(snapped.x), y: Math.round(snapped.y) });
-    edge.way = readWay(edge.way).map((q) => avoidNodes(q, this.app.diagram.nodes));
-    this.app.select({ type: 'edge', id: edge.id });
+    edge.way = readWay(edge.way).map((q) =>
+      avoidNodes(q, this.app.diagram.nodes),
+    );
+    this.app.select({ type: "edge", id: edge.id });
     this.routeEdge = edge.id;
-    this.app.commit('Punto de trayectoria');
+    this.app.commit("Punto de trayectoria");
     if (!antes) {
-      this.app.toast('Trayectoria manual: los puntos indicados mandan sobre el trazado automático. Clic derecho sobre un punto para quitarlo.');
+      this.app.toast(
+        "Trayectoria manual: los puntos indicados mandan sobre el trazado automático. Clic derecho sobre un punto para quitarlo.",
+      );
     }
   }
 
   beginRoutePoint(e, w, index) {
     const edge = edgeById(this.app.diagram, this.routeEdge);
     if (!edge) return;
-    this.app.select({ type: 'edge', id: edge.id });
-    this.app.pushHistory('Trayectoria');
-    this.drag = { kind: 'routepoint', edgeId: edge.id, index, start: w, moved: false, x0: edge.way[index].x, y0: edge.way[index].y };
+    this.app.select({ type: "edge", id: edge.id });
+    this.app.pushHistory("Trayectoria");
+    this.drag = {
+      kind: "routepoint",
+      edgeId: edge.id,
+      index,
+      start: w,
+      moved: false,
+      x0: edge.way[index].x,
+      y0: edge.way[index].y,
+    };
   }
 
   removeRoutePoint(index) {
@@ -535,7 +668,7 @@ export class Interaction {
     if (!edge || !Array.isArray(edge.way) || !edge.way.length) return;
     this.app.pushHistory();
     edge.way.splice(index, 1);
-    this.app.commit('Quitar punto de trayectoria');
+    this.app.commit("Quitar punto de trayectoria");
   }
 
   /**
@@ -545,32 +678,37 @@ export class Interaction {
   drawRouteHandles() {
     const pendiente = this.route ? this.route.way : null;
     let edge = null;
-    if (!pendiente && this.routeEdge) edge = edgeById(this.app.diagram, this.routeEdge);
-    const pts = pendiente || (edge && Array.isArray(edge.way) ? edge.way : null) || [];
-    const id = pendiente ? 'pendiente' : edge?.id || '';
+    if (!pendiente && this.routeEdge)
+      edge = edgeById(this.app.diagram, this.routeEdge);
+    const pts =
+      pendiente || (edge && Array.isArray(edge.way) ? edge.way : null) || [];
+    const id = pendiente ? "pendiente" : edge?.id || "";
     const key = `${id}:${pts.length}`;
     if (!this.routeLayer) {
-      this.routeLayer = svgEl('g', { class: 'route-points' });
+      this.routeLayer = svgEl("g", { class: "route-points" });
       this.overlay.appendChild(this.routeLayer);
     }
     if (key === this.routeKey) {
-      this.routeLayer.querySelectorAll('circle').forEach((c, i) => {
+      this.routeLayer.querySelectorAll("circle").forEach((c, i) => {
         if (pts[i]) {
-          c.setAttribute('cx', pts[i].x);
-          c.setAttribute('cy', pts[i].y);
+          c.setAttribute("cx", pts[i].x);
+          c.setAttribute("cy", pts[i].y);
         }
       });
       return;
     }
     this.routeKey = key;
-    this.routeLayer.textContent = '';
+    this.routeLayer.textContent = "";
     if (!pts.length) return;
     const r = 5 / (this.app.diagram.view.k || 1);
     pts.forEach((p, i) => {
-      const c = svgEl('circle', {
-        class: `route-point${pendiente ? ' pending' : ''}`,
-        cx: p.x, cy: p.y, r,
-        'data-route-point': i, 'data-edge': id,
+      const c = svgEl("circle", {
+        class: `route-point${pendiente ? " pending" : ""}`,
+        cx: p.x,
+        cy: p.y,
+        r,
+        "data-route-point": i,
+        "data-edge": id,
       });
       this.routeLayer.appendChild(c);
     });
@@ -578,10 +716,14 @@ export class Interaction {
 
   onPointerMove(e) {
     this.last = { x: e.clientX, y: e.clientY };
-    this.pointer = { x: e.clientX, y: e.clientY, inside: !!e.target?.closest?.('#canvas') };
+    this.pointer = {
+      x: e.clientX,
+      y: e.clientY,
+      inside: !!e.target?.closest?.("#canvas"),
+    };
     // Trazado en curso (incluido el arrastre con el botón pulsado): manda sobre
     // el resto de gestos.
-    if (this.route && (!this.drag || this.drag.kind === 'connect')) {
+    if (this.route && (!this.drag || this.drag.kind === "connect")) {
       this.updateRoute(e);
       return;
     }
@@ -593,10 +735,14 @@ export class Interaction {
       return;
     }
     const d = this.drag;
-    if (!d) { this.updateInsertPreview(e); this.updateRouteHover(); return; }
+    if (!d) {
+      this.updateInsertPreview(e);
+      this.updateRouteHover();
+      return;
+    }
     const w = this.toWorld(e.clientX, e.clientY);
 
-    if (d.kind === 'pan') {
+    if (d.kind === "pan") {
       const v = this.app.diagram.view;
       v.x = d.vx + (e.clientX - d.x0);
       v.y = d.vy + (e.clientY - d.y0);
@@ -604,11 +750,15 @@ export class Interaction {
       return;
     }
 
-    if (d.kind === 'nodes') {
+    if (d.kind === "nodes") {
       const dx = w.x - d.start.x;
       const dy = w.y - d.start.y;
       const k = this.app.diagram.view.k || 1;
       if (!d.moved && Math.hypot(dx, dy) * k < 3) return;
+      // El historial entra en el instante en que el nodo se mueve de sitio (y
+      // antes de tocarlo): un clic que no mueve nada no llena la pila, y mover
+      // un nodo se puede deshacer como cualquier otra edición.
+      if (!d.moved) this.app.pushHistory("Mover nodos");
       d.moved = true;
       let ox = dx;
       let oy = dy;
@@ -625,9 +775,18 @@ export class Interaction {
         }
         // Guías de alineación: si un borde o el centro del grupo queda a tiro de
         // la línea de otro nodo, se corrige para que coincidan de verdad.
-        const res = snapMove(this.app.diagram.nodes, d.items.map((it) => ({
-          x: it.x0 + ox, y: it.y0 + oy, w: it.w, h: it.h,
-        })), ox, oy, { tol: GUIDE_PX / k, skip: new Set(d.items.map((it) => it.id)) });
+        const res = snapMove(
+          this.app.diagram.nodes,
+          d.items.map((it) => ({
+            x: it.x0 + ox,
+            y: it.y0 + oy,
+            w: it.w,
+            h: it.h,
+          })),
+          ox,
+          oy,
+          { tol: GUIDE_PX / k, skip: new Set(d.items.map((it) => it.id)) },
+        );
         ox = res.dx;
         oy = res.dy;
         this.drawAlignGuides(res.guides);
@@ -648,19 +807,28 @@ export class Interaction {
       return;
     }
 
-    if (d.kind === 'resize') {
+    if (d.kind === "resize") {
       const t = NODE_TYPES[d.node.type];
-      const cuadrado = d.node.type === 'decision' || d.node.type === 'start'
-        || d.node.type === 'end' || d.node.type === 'stop';
-      let nw = d.free ? d.w0 + (w.x - d.start.x) : Math.round((d.w0 + (w.x - d.start.x)) / GRID) * GRID;
-      let nh = d.free ? d.h0 + (w.y - d.start.y) : Math.round((d.h0 + (w.y - d.start.y)) / GRID) * GRID;
+      const cuadrado =
+        d.node.type === "decision" ||
+        d.node.type === "start" ||
+        d.node.type === "end" ||
+        d.node.type === "stop";
+      let nw = d.free
+        ? d.w0 + (w.x - d.start.x)
+        : Math.round((d.w0 + (w.x - d.start.x)) / GRID) * GRID;
+      let nh = d.free
+        ? d.h0 + (w.y - d.start.y)
+        : Math.round((d.h0 + (w.y - d.start.y)) / GRID) * GRID;
       if (d.free) {
         this.clearAlignGuides();
       } else {
         // El borde que se arrastra se engancha a las líneas de los demás nodos,
         // así dos cajas acaban con la misma medida. Los cuadrados sólo se
         // ajustan en horizontal: la altura es la que tenga que salir.
-        const res = snapSize(this.app.diagram.nodes, d.node, nw, nh, { tol: GUIDE_PX / (this.app.diagram.view.k || 1) });
+        const res = snapSize(this.app.diagram.nodes, d.node, nw, nh, {
+          tol: GUIDE_PX / (this.app.diagram.view.k || 1),
+        });
         nw = res.w;
         nh = cuadrado ? res.w : res.h;
         this.drawAlignGuides(res.guides);
@@ -670,7 +838,10 @@ export class Interaction {
         // círculos (los pequeños, los dos últimos, con tope en su DOT_MAX, que
         // en el punto muerto es 1.5 veces mayor).
         const base = Math.max(t.minW, t.minH, nw, nh);
-        const s = d.node.type === 'decision' ? base : Math.min(dotMax(d.node.type), base);
+        const s =
+          d.node.type === "decision"
+            ? base
+            : Math.min(dotMax(d.node.type), base);
         d.node.w = s;
         d.node.h = s;
       } else {
@@ -681,7 +852,7 @@ export class Interaction {
       return;
     }
 
-    if (d.kind === 'lane') {
+    if (d.kind === "lane") {
       const next = Math.max(80, Math.round((d.h0 + (w.y - d.start.y)) / 4) * 4);
       const delta = next - d.lane.height;
       if (delta) {
@@ -693,24 +864,36 @@ export class Interaction {
       return;
     }
 
-    if (d.kind === 'routepoint') {
+    if (d.kind === "routepoint") {
       const edge = edgeById(this.app.diagram, d.edgeId);
       if (!edge || !edge.way[d.index]) return;
       d.moved = true;
       const step = this.snapPoint(w, e.altKey);
-      edge.way[d.index] = avoidNodes({ x: Math.round(step.x), y: Math.round(step.y) }, this.app.diagram.nodes);
+      edge.way[d.index] = avoidNodes(
+        { x: Math.round(step.x), y: Math.round(step.y) },
+        this.app.diagram.nodes,
+      );
       this.app.refresh();
     }
   }
 
   /** Con la herramienta de ruta, muestra los puntos de la flecha que hay debajo. */
   updateRouteHover() {
-    if (this.app.tool !== 'route') { this.setRouteEdge(null); return; }
+    if (this.app.tool !== "route") {
+      this.setRouteEdge(null);
+      return;
+    }
     if (this.pointer && !this.pointer.inside) return;
     const w = this.toWorld(this.last.x, this.last.y);
     // Recalcular la geometría de todas las flechas en cada movimiento es caro:
     // sólo se busca cuando el puntero se ha desplazado de verdad.
-    if (this.hoverAt && Math.hypot(w.x - this.hoverAt.x, w.y - this.hoverAt.y) * (this.app.diagram.view.k || 1) < 4) return;
+    if (
+      this.hoverAt &&
+      Math.hypot(w.x - this.hoverAt.x, w.y - this.hoverAt.y) *
+        (this.app.diagram.view.k || 1) <
+        4
+    )
+      return;
     this.hoverAt = w;
     const near = this.nearEdge(w);
     this.setRouteEdge(near ? near.id : null);
@@ -730,17 +913,23 @@ export class Interaction {
    * el nodo no está alineado con nada. Sólo vive durante el arrastre.
    */
   drawAlignGuides(guides) {
-    if (!guides || !guides.length) { this.clearAlignGuides(); return; }
+    if (!guides || !guides.length) {
+      this.clearAlignGuides();
+      return;
+    }
     if (!this.guideLayer) {
-      this.guideLayer = svgEl('g', { class: 'align-guides' });
+      this.guideLayer = svgEl("g", { class: "align-guides" });
       this.overlay.appendChild(this.guideLayer);
     }
-    this.guideLayer.textContent = '';
+    this.guideLayer.textContent = "";
     for (const g of guides) {
-      const attrs = g.axis === 'x'
-        ? { x1: g.value, y1: g.from, x2: g.value, y2: g.to }
-        : { x1: g.from, y1: g.value, x2: g.to, y2: g.value };
-      this.guideLayer.appendChild(svgEl('line', { class: 'align-guide', ...attrs }));
+      const attrs =
+        g.axis === "x"
+          ? { x1: g.value, y1: g.from, x2: g.value, y2: g.to }
+          : { x1: g.from, y1: g.value, x2: g.to, y2: g.value };
+      this.guideLayer.appendChild(
+        svgEl("line", { class: "align-guide", ...attrs }),
+      );
     }
   }
 
@@ -754,31 +943,49 @@ export class Interaction {
     const d = this.drag;
     this.drag = null;
     this.clearAlignGuides();
-    if (this.svg.style.cursor === 'grabbing') this.svg.style.cursor = '';
+    if (this.svg.style.cursor === "grabbing") this.svg.style.cursor = "";
 
     if (!d) {
-      if (this.marquee) { this.finishMarquee(); }
+      if (this.marquee) {
+        this.finishMarquee();
+      }
       return;
     }
 
-    if (d.kind === 'connect') {
+    if (d.kind === "connect") {
       // Soltar engancha a la bolita más cercana (tolerancia amplia: al soltar
       // no hace falta apuntar al píxel). Si no hay ninguna a tiro, la trayectoria
       // sigue pegada al cursor esperando el siguiente clic.
       const w = this.toWorld(e.clientX, e.clientY);
       const t = this.targetAt(w, 30);
-      if (t && t.node.id !== d.from) this.finishRoute(t.node.id, t.side || sideNear(t.node, w));
-      else this.app.status(this.route?.way.length
-        ? 'Trayectoria en curso: clic en la bolita del destino, clic derecho para otro giro o Esc para cancelar'
-        : 'Mueve el ratón para guiar la flecha · clic derecho para fijar el primer giro');
+      if (t && t.node.id !== d.from)
+        this.finishRoute(t.node.id, t.side || sideNear(t.node, w));
+      else
+        this.app.status(
+          this.route?.way.length
+            ? "Trayectoria en curso: clic en la bolita del destino, clic derecho para otro giro o Esc para cancelar"
+            : "Mueve el ratón para guiar la flecha · clic derecho para fijar el primer giro",
+        );
       return;
     }
 
-    if (d.kind === 'routepoint' && d.moved) { this.app.commit('Mover punto de trayectoria'); return; }
+    if (d.kind === "routepoint" && d.moved) {
+      this.app.commit("Mover punto de trayectoria");
+      return;
+    }
 
-    if (d.kind === 'nodes' && d.moved) { this.app.commit('Mover nodos'); return; }
-    if (d.kind === 'resize' && d.moved) { this.app.commit('Redimensionar'); return; }
-    if (d.kind === 'lane' && d.moved) { this.app.commit('Redimensionar carril'); return; }
+    if (d.kind === "nodes" && d.moved) {
+      this.app.commit("Mover nodos");
+      return;
+    }
+    if (d.kind === "resize" && d.moved) {
+      this.app.commit("Redimensionar");
+      return;
+    }
+    if (d.kind === "lane" && d.moved) {
+      this.app.commit("Redimensionar carril");
+      return;
+    }
     if (d.marquee) this.finishMarquee();
   }
 
@@ -791,7 +998,7 @@ export class Interaction {
     const destino = r.hover;
     const fake = createEdge(r.from, destino ? destino.id : r.from, {
       fromSide: r.fromSide,
-      toSide: destino ? r.toSide : 'left',
+      toSide: destino ? r.toSide : "left",
       way: r.way.map((p) => ({ ...p })),
     });
     const tmp = { ...d, edges: [...d.edges, fake] };
@@ -799,11 +1006,14 @@ export class Interaction {
     if (!geo) return;
     // Bolitas fantasma: se calculan con la flecha ya metida, así que se ven
     // justo en el punto por el que la flecha va a entrar o salir.
-    this.drawHint('salida', anchorFor(tmp, fake, geo.sides.from, true));
-    this.drawHint('entrada', destino ? anchorFor(tmp, fake, geo.sides.to, false) : null);
+    this.drawHint("salida", anchorFor(tmp, fake, geo.sides.from, true));
+    this.drawHint(
+      "entrada",
+      destino ? anchorFor(tmp, fake, geo.sides.to, false) : null,
+    );
     if (destino) {
       // Con destino encima: la geometría definitiva, tal cual quedará.
-      this.tempEdge.setAttribute('d', edgePath(geo));
+      this.tempEdge.setAttribute("d", edgePath(geo));
       return;
     }
     // Todavía no hay destino: del ancla de salida hasta el punto que guía el cursor.
@@ -814,13 +1024,19 @@ export class Interaction {
     const cursor = w || { x: r.tip?.x ?? p0.x, y: r.tip?.y ?? p0.y };
     const base = r.way.length ? r.way[r.way.length - 1] : p0;
     r.tip = guidePoint(base, cursor, r.axis);
-    r.axis = Math.abs(r.tip.x - base.x) > ALIGN ? 'x' : 'y';
+    r.axis = Math.abs(r.tip.x - base.x) > ALIGN ? "x" : "y";
     const pts = userRouteTip(p0, n0, r.way, r.tip);
-    this.tempEdge.setAttribute('d', edgePath({ p1: p0, p2: r.tip, pts, mid: r.tip }));
+    this.tempEdge.setAttribute(
+      "d",
+      edgePath({ p1: p0, p2: r.tip, pts, mid: r.tip }),
+    );
   }
 
   clearTempEdge() {
-    if (this.tempEdge) { this.tempEdge.remove(); this.tempEdge = null; }
+    if (this.tempEdge) {
+      this.tempEdge.remove();
+      this.tempEdge = null;
+    }
   }
 
   /* -------- vista previa de inserción (fantasma que sigue al ratón) -------- */
@@ -829,7 +1045,7 @@ export class Interaction {
   updateInsertPreview(e) {
     const tool = this.app.tool;
     const t = NODE_TYPES[tool];
-    if (!t || this.app.simRunning || !e.target?.closest?.('#canvas')) {
+    if (!t || this.app.simRunning || !e.target?.closest?.("#canvas")) {
       this.clearInsertPreview();
       return;
     }
@@ -839,84 +1055,118 @@ export class Interaction {
     const { x, y } = this.snapSpot(tool, w.x, w.y);
     if (!this.insertPreview || this.insertPreview.tool !== tool) {
       this.clearInsertPreview();
-      const g = svgEl('g', { class: 'insert-preview' });
+      const g = svgEl("g", { class: "insert-preview" });
       let shape;
-      if (tool === 'start' || tool === 'end' || tool === 'stop') {
-        shape = svgEl('circle', { cx: 0, cy: 0, r: Math.min(t.w, t.h) / 2, class: 'ghost' });
-      } else if (tool === 'decision') {
-        shape = svgEl('polygon', { class: 'ghost' });
+      if (tool === "start" || tool === "end" || tool === "stop") {
+        shape = svgEl("circle", {
+          cx: 0,
+          cy: 0,
+          r: Math.min(t.w, t.h) / 2,
+          class: "ghost",
+        });
+      } else if (tool === "decision") {
+        shape = svgEl("polygon", { class: "ghost" });
       } else {
-        shape = svgEl('rect', { class: 'ghost', rx: tool === 'activity' ? 12 : 0 });
+        shape = svgEl("rect", {
+          class: "ghost",
+          rx: tool === "activity" ? 12 : 0,
+        });
       }
       g.appendChild(shape);
       this.overlay.appendChild(g);
       this.insertPreview = { g, shape, tool };
     }
     const p = this.insertPreview;
-    if (tool === 'start' || tool === 'end' || tool === 'stop') {
-      p.shape.setAttribute('cx', x + t.w / 2);
-      p.shape.setAttribute('cy', y + t.h / 2);
-    } else if (tool === 'decision') {
+    if (tool === "start" || tool === "end" || tool === "stop") {
+      p.shape.setAttribute("cx", x + t.w / 2);
+      p.shape.setAttribute("cy", y + t.h / 2);
+    } else if (tool === "decision") {
       const s = Math.max(t.w, t.h);
-      p.shape.setAttribute('points',
-        `${x + s / 2},${y} ${x + s},${y + s / 2} ${x + s / 2},${y + s} ${x},${y + s / 2}`);
+      p.shape.setAttribute(
+        "points",
+        `${x + s / 2},${y} ${x + s},${y + s / 2} ${x + s / 2},${y + s} ${x},${y + s / 2}`,
+      );
     } else {
-      p.shape.setAttribute('x', x);
-      p.shape.setAttribute('y', y);
-      p.shape.setAttribute('width', t.w);
-      p.shape.setAttribute('height', t.h);
+      p.shape.setAttribute("x", x);
+      p.shape.setAttribute("y", y);
+      p.shape.setAttribute("width", t.w);
+      p.shape.setAttribute("height", t.h);
     }
   }
 
   clearInsertPreview() {
-    if (this.insertPreview) { this.insertPreview.g.remove(); this.insertPreview = null; }
+    if (this.insertPreview) {
+      this.insertPreview.g.remove();
+      this.insertPreview = null;
+    }
   }
 
   drawMarquee() {
     if (!this.marquee) return;
     if (!this.marqueeRect) {
-      this.marqueeRect = svgEl('rect', {
-        fill: 'rgba(255,255,255,.06)', stroke: '#8d8d96', 'stroke-width': 1, 'stroke-dasharray': '4 3',
+      this.marqueeRect = svgEl("rect", {
+        fill: "rgba(255,255,255,.06)",
+        stroke: "#8d8d96",
+        "stroke-width": 1,
+        "stroke-dasharray": "4 3",
       });
       this.overlay.appendChild(this.marqueeRect);
     }
     const m = this.marquee;
-    const x = Math.min(m.x0, m.x), y = Math.min(m.y0, m.y);
-    this.marqueeRect.setAttribute('x', x);
-    this.marqueeRect.setAttribute('y', y);
-    this.marqueeRect.setAttribute('width', Math.abs(m.x - m.x0));
-    this.marqueeRect.setAttribute('height', Math.abs(m.y - m.y0));
+    const x = Math.min(m.x0, m.x),
+      y = Math.min(m.y0, m.y);
+    this.marqueeRect.setAttribute("x", x);
+    this.marqueeRect.setAttribute("y", y);
+    this.marqueeRect.setAttribute("width", Math.abs(m.x - m.x0));
+    this.marqueeRect.setAttribute("height", Math.abs(m.y - m.y0));
   }
 
   finishMarquee() {
     const m = this.marquee;
     this.marquee = null;
-    if (this.marqueeRect) { this.marqueeRect.remove(); this.marqueeRect = null; }
+    if (this.marqueeRect) {
+      this.marqueeRect.remove();
+      this.marqueeRect = null;
+    }
     if (!m) return;
-    const x1 = Math.min(m.x0, m.x), x2 = Math.max(m.x0, m.x);
-    const y1 = Math.min(m.y0, m.y), y2 = Math.max(m.y0, m.y);
+    const x1 = Math.min(m.x0, m.x),
+      x2 = Math.max(m.x0, m.x);
+    const y1 = Math.min(m.y0, m.y),
+      y2 = Math.max(m.y0, m.y);
     if (x2 - x1 < 4 && y2 - y1 < 4) return;
-    const picked = this.app.diagram.nodes.filter((n) =>
-      n.x + n.w > x1 && n.x < x2 && n.y + n.h > y1 && n.y < y2);
+    const picked = this.app.diagram.nodes.filter(
+      (n) => n.x + n.w > x1 && n.x < x2 && n.y + n.h > y1 && n.y < y2,
+    );
     for (const n of picked) {
-      if (!this.app.isSelected({ type: 'node', id: n.id })) m.base.push({ type: 'node', id: n.id });
+      if (!this.app.isSelected({ type: "node", id: n.id }))
+        m.base.push({ type: "node", id: n.id });
     }
     this.app.setSelection(m.base);
   }
 
   /** Dibuja el tirador de redimensión del nodo seleccionado. */
   drawResizeHandle() {
-    if (this.resizeHandle) { this.resizeHandle.remove(); this.resizeHandle = null; }
-    if (this.app.simRunning || this.app.tool !== 'select') return;
-    const sel = this.app.state.selected.filter((s) => s.type === 'node');
+    if (this.resizeHandle) {
+      this.resizeHandle.remove();
+      this.resizeHandle = null;
+    }
+    if (this.app.simRunning || this.app.tool !== "select") return;
+    const sel = this.app.state.selected.filter((s) => s.type === "node");
     if (sel.length !== 1) return;
     const n = nodeById(this.app.diagram, sel[0].id);
     if (!n) return;
     const size = 9 / this.app.diagram.view.k;
-    this.resizeHandle = svgEl('rect', {
-      x: n.x + n.w - size / 2, y: n.y + n.h - size / 2, width: size, height: size,
-      fill: '#f4f4f6', stroke: '#0b0b0c', 'stroke-width': 1, rx: 1,
-      'data-resize': '1', style: 'cursor: nwse-resize',
+    this.resizeHandle = svgEl("rect", {
+      x: n.x + n.w - size / 2,
+      y: n.y + n.h - size / 2,
+      width: size,
+      height: size,
+      fill: "#f4f4f6",
+      stroke: "#0b0b0c",
+      "stroke-width": 1,
+      rx: 1,
+      "data-resize": "1",
+      style: "cursor: nwse-resize",
     });
     this.overlay.appendChild(this.resizeHandle);
   }
@@ -947,23 +1197,30 @@ export class Interaction {
   async onDblClick(e) {
     const edgeLabel = e.target.dataset?.edgeLabel;
     // Doble clic en el texto de la flecha: sólo la etiqueta, como en los nodos.
-    if (edgeLabel) { await this.app.editEdgeLabel(edgeLabel); return; }
+    if (edgeLabel) {
+      await this.app.editEdgeLabel(edgeLabel);
+      return;
+    }
     // Doble clic sobre la línea (o cerca de ella): selecciona y edita sólo la
     // etiqueta en un único diálogo. En las ramas de una decisión esto cambia el
     // texto de la rama; la condición se edita en el inspector.
-    let edgeId = e.target.dataset?.edge ?? e.target.closest?.('.edge')?.dataset?.edge;
+    let edgeId =
+      e.target.dataset?.edge ?? e.target.closest?.(".edge")?.dataset?.edge;
     edgeId ||= this.nearEdge(this.toWorld(e.clientX, e.clientY))?.id;
     if (edgeId) {
-      this.app.select({ type: 'edge', id: edgeId });
+      this.app.select({ type: "edge", id: edgeId });
       await this.app.editEdgeLabel(edgeId);
       return;
     }
     const laneTitle = e.target.dataset?.laneTitle;
-    if (laneTitle !== undefined) { this.app.editLaneName(Number(laneTitle)); return; }
-    const nodeEl = e.target.closest('.node');
+    if (laneTitle !== undefined) {
+      this.app.editLaneName(Number(laneTitle));
+      return;
+    }
+    const nodeEl = e.target.closest(".node");
     if (nodeEl) {
       const id = nodeEl.dataset.id;
-      this.app.select({ type: 'node', id });
+      this.app.select({ type: "node", id });
       await this.app.editNodeLabel(id);
     }
   }
@@ -971,56 +1228,118 @@ export class Interaction {
   /* ----------------------------- teclado ------------------------------ */
 
   onKeyDown(e) {
-    const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+    const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(
+      document.activeElement?.tagName,
+    );
     const mod = e.ctrlKey || e.metaKey;
 
-    if (e.code === 'Space' && !typing) {
+    if (e.code === "Space" && !typing) {
       this.spaceDown = true;
-      this.svg.style.cursor = 'grab';
+      this.svg.style.cursor = "grab";
       if (!this.drag) this.beginPan(e);
       e.preventDefault();
       return;
     }
 
-    if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? this.app.redo() : this.app.undo(); return; }
-    if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); this.app.redo(); return; }
+    if (mod && e.key.toLowerCase() === "z") {
+      e.preventDefault();
+      e.shiftKey ? this.app.redo() : this.app.undo();
+      return;
+    }
+    if (mod && e.key.toLowerCase() === "y") {
+      e.preventDefault();
+      this.app.redo();
+      return;
+    }
     if (typing) return;
 
-    if (mod && e.key.toLowerCase() === 'a') { e.preventDefault(); this.app.selectAll(); return; }
-    if (mod && e.key.toLowerCase() === 'c') { e.preventDefault(); this.app.copySelection(); return; }
-    if (mod && e.key.toLowerCase() === 'v') { e.preventDefault(); this.app.pasteSelection(); return; }
-    if (mod && e.key.toLowerCase() === 'x') { e.preventDefault(); this.app.copySelection(); this.app.deleteSelected(); return; }
-    if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); this.app.duplicateSelection(); return; }
-    if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); this.app.saveFile(); return; }
+    if (mod && e.key.toLowerCase() === "a") {
+      e.preventDefault();
+      this.app.selectAll();
+      return;
+    }
+    if (mod && e.key.toLowerCase() === "c") {
+      e.preventDefault();
+      this.app.copySelection();
+      return;
+    }
+    if (mod && e.key.toLowerCase() === "v") {
+      e.preventDefault();
+      this.app.pasteSelection();
+      return;
+    }
+    if (mod && e.key.toLowerCase() === "x") {
+      e.preventDefault();
+      this.app.copySelection();
+      this.app.deleteSelected();
+      return;
+    }
+    if (mod && e.key.toLowerCase() === "d") {
+      e.preventDefault();
+      this.app.duplicateSelection();
+      return;
+    }
+    if (mod && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      this.app.saveFile();
+      return;
+    }
     if (mod) return;
 
     switch (e.key) {
-      case 'Delete': case 'Backspace':
+      case "Delete":
+      case "Backspace":
         e.preventDefault();
-        for (const s of [...this.app.state.selected]) this.app.deleteSelection(s);
+        for (const s of [...this.app.state.selected])
+          this.app.deleteSelection(s);
         break;
-      case 'Escape':
+      case "Escape":
         this.cancelRoute();
         this.app.clearSelection();
-        this.app.setTool('select');
+        this.app.setTool("select");
         break;
-      case 'Enter':
+      case "Enter":
         // Cierra el trazado en curso si el puntero está sobre un nodo destino.
-        if (this.route && this.route.hover && this.route.hover.id !== this.route.from) {
+        if (
+          this.route &&
+          this.route.hover &&
+          this.route.hover.id !== this.route.from
+        ) {
           e.preventDefault();
           this.finishRoute(this.route.hover.id);
         }
         break;
-      case '=': case '+': this.zoomBy(1.15); break;
-      case '-': case '_': this.zoomBy(1 / 1.15); break;
-      case '0': this.app.zoomFit(); break;
+      case "=":
+      case "+":
+        this.zoomBy(1.15);
+        break;
+      case "-":
+      case "_":
+        this.zoomBy(1 / 1.15);
+        break;
+      case "0":
+        this.app.zoomFit();
+        break;
       default: {
         const map = {
-          v: 'select', s: 'start', e: 'end', p: 'stop', a: 'activity', d: 'decision',
-          f: 'fork', j: 'join', n: 'note', o: 'objeto', c: 'connect', x: 'delete',
+          v: "select",
+          s: "start",
+          e: "end",
+          p: "stop",
+          a: "activity",
+          d: "decision",
+          f: "fork",
+          j: "join",
+          n: "note",
+          o: "objeto",
+          c: "connect",
+          x: "delete",
         };
         const tool = map[e.key.toLowerCase()];
-        if (tool) { this.app.setTool(tool); e.preventDefault(); }
+        if (tool) {
+          this.app.setTool(tool);
+          e.preventDefault();
+        }
       }
     }
   }
@@ -1028,7 +1347,14 @@ export class Interaction {
 
 /** Nombre legible de una bolita, para los mensajes de la barra de estado. */
 function labelSide(side) {
-  return { left: 'la izquierda', right: 'la derecha', top: 'arriba', bottom: 'abajo' }[side] || side;
+  return (
+    {
+      left: "la izquierda",
+      right: "la derecha",
+      top: "arriba",
+      bottom: "abajo",
+    }[side] || side
+  );
 }
 
 function laneOf(d, node) {
@@ -1041,4 +1367,15 @@ function laneOf(d, node) {
   return d.lanes.length - 1;
 }
 
-export { laneOf, addEdge, removeNode, removeEdge, inEdges, outEdges, cloneDiagram, edgeGeometry, nodeAt, edgeAt };
+export {
+  laneOf,
+  addEdge,
+  removeNode,
+  removeEdge,
+  inEdges,
+  outEdges,
+  cloneDiagram,
+  edgeGeometry,
+  nodeAt,
+  edgeAt,
+};
