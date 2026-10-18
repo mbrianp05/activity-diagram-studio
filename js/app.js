@@ -1142,8 +1142,17 @@ function askText(title, value) {
     }, { once: true });
     input.addEventListener('keydown', onKey);
     dlg.showModal();
-    input.focus();
-    input.select();
+    // Texto seleccionado de entrada: al abrir el diálogo desde un clic (p. ej.
+    // al insertar un nodo) el navegador todavía puede devolverle el foco al
+    // lienzo y dejar la caja sin seleccionar, así que se reafirma en el
+    // siguiente fotograma y cada vez que la caja recibe el foco.
+    const seleccionar = () => {
+      input.focus({ preventScroll: true });
+      input.select();
+    };
+    seleccionar();
+    requestAnimationFrame(seleccionar);
+    input.addEventListener('focus', seleccionar);
   });
 }
 
