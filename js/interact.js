@@ -314,7 +314,6 @@ export class Interaction {
       const n = nodeById(this.app.diagram, i);
       return { id: i, x0: n.x, y0: n.y, w: n.w, h: n.h };
     });
-    this.clearAlignGuides();
     this.drag = {
       kind: "nodes",
       start: w,
@@ -787,8 +786,7 @@ export class Interaction {
       let ox = dx;
       let oy = dy;
       if (d.free) {
-        // Alt: ni rejilla ni guías, cada nodo va donde lo suelta el puntero.
-        this.clearAlignGuides();
+        // Alt: sin rejilla ni ajuste, cada nodo va donde lo suelta el puntero.
       } else {
         if (this.snap) {
           // Rejilla: se snapa el origen de la caja del grupo (no el
@@ -797,8 +795,9 @@ export class Interaction {
           ox = Math.round((d.box.x + ox) / GRID) * GRID - d.box.x;
           oy = Math.round((d.box.y + oy) / GRID) * GRID - d.box.y;
         }
-        // Guías de alineación: si un borde o el centro del grupo queda a tiro de
-        // la línea de otro nodo, se corrige para que coincidan de verdad.
+        // Alineación: si un borde o el centro del grupo queda a tiro de la línea
+        // de otro nodo, se corrige para que coincidan de verdad (sin dibujar
+        // guías: el nodo simplemente cae en su sitio).
         const res = snapMove(
           this.app.diagram.nodes,
           d.items.map((it) => ({
@@ -813,7 +812,6 @@ export class Interaction {
         );
         ox = res.dx;
         oy = res.dy;
-        this.drawAlignGuides(res.guides);
       }
       for (const it of d.items) {
         const n = nodeById(this.app.diagram, it.id);
@@ -845,7 +843,7 @@ export class Interaction {
         ? d.h0 + (w.y - d.start.y)
         : Math.round((d.h0 + (w.y - d.start.y)) / GRID) * GRID;
       if (d.free) {
-        this.clearAlignGuides();
+        // Alt: sin ajuste de tamaño, la caja sale tal cual.
       } else {
         // El borde que se arrastra se engancha a las líneas de los demás nodos,
         // así dos cajas acaban con la misma medida. Los cuadrados sólo se
@@ -855,7 +853,6 @@ export class Interaction {
         });
         nw = res.w;
         nh = cuadrado ? res.w : res.h;
-        this.drawAlignGuides(res.guides);
       }
       if (cuadrado) {
         // Decisión: cuadrado de puntas verticales. Inicio/fin/punto muerto:
@@ -930,43 +927,9 @@ export class Interaction {
     this.drawRouteHandles();
   }
 
-  /* ---------------------------- guías de alineación ---------------------- */
-
-  /**
-   * Dibuja las líneas en las que el grupo acaba de encajar: si una no aparece,
-   * el nodo no está alineado con nada. Sólo vive durante el arrastre.
-   */
-  drawAlignGuides(guides) {
-    if (!guides || !guides.length) {
-      this.clearAlignGuides();
-      return;
-    }
-    if (!this.guideLayer) {
-      this.guideLayer = svgEl("g", { class: "align-guides" });
-      this.overlay.appendChild(this.guideLayer);
-    }
-    this.guideLayer.textContent = "";
-    for (const g of guides) {
-      const attrs =
-        g.axis === "x"
-          ? { x1: g.value, y1: g.from, x2: g.value, y2: g.to }
-          : { x1: g.from, y1: g.value, x2: g.to, y2: g.value };
-      this.guideLayer.appendChild(
-        svgEl("line", { class: "align-guide", ...attrs }),
-      );
-    }
-  }
-
-  clearAlignGuides() {
-    if (!this.guideLayer) return;
-    this.guideLayer.remove();
-    this.guideLayer = null;
-  }
-
   onPointerUp(e) {
     const d = this.drag;
     this.drag = null;
-    this.clearAlignGuides();
     if (this.svg.style.cursor === "grabbing") this.svg.style.cursor = "";
 
     if (!d) {

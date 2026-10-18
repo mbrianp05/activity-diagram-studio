@@ -25,14 +25,14 @@ const EXTRA_TOOLS = { connect: 'Conectar', route: 'Recorrido', delete: 'Eliminar
 /** Rótulos de las bolitas de conexión. */
 const SIDE_LABEL = { left: 'Izquierda', right: 'Derecha', top: 'Arriba', bottom: 'Abajo' };
 
-/** Botones de alinear/repartir del inspector: iconos y texto explicativo. */
+/**
+ * Botones de alinear/repartir del inspector: iconos y texto explicativo. Sólo
+ * quedan la alineación horizontal y la vertical; los bordes (izquierda/derecha/
+ * arriba/abajo) eran un resultado equivocado de iteraciones anteriores.
+ */
 const ALIGN_BUTTONS = [
-  ['left', 'Alinear a la izquierda', '<path d="M4 3v18" /><rect x="7" y="6" width="12" height="5" /><rect x="7" y="13" width="8" height="5" />'],
-  ['centerX', 'Centrar horizontalmente', '<path d="M12 3v18" /><rect x="4" y="6" width="16" height="5" /><rect x="7" y="13" width="10" height="5" />'],
-  ['right', 'Alinear a la derecha', '<path d="M20 3v18" /><rect x="5" y="6" width="12" height="5" /><rect x="9" y="13" width="8" height="5" />'],
-  ['top', 'Alinear arriba', '<path d="M3 4h18" /><rect x="6" y="7" width="5" height="12" /><rect x="13" y="7" width="5" height="8" />'],
-  ['centerY', 'Centrar verticalmente', '<path d="M3 12h18" /><rect x="6" y="4" width="5" height="16" /><rect x="13" y="7" width="5" height="10" />'],
-  ['bottom', 'Alinear abajo', '<path d="M3 20h18" /><rect x="6" y="5" width="5" height="12" /><rect x="13" y="9" width="5" height="8" />'],
+  ['centerX', 'Alinear horizontalmente', '<path d="M12 3v18" /><rect x="4" y="6" width="16" height="5" /><rect x="7" y="13" width="10" height="5" />'],
+  ['centerY', 'Alinear verticalmente', '<path d="M3 12h18" /><rect x="6" y="4" width="5" height="16" /><rect x="13" y="7" width="5" height="10" />'],
 ];
 const DIST_BUTTONS = [
   ['x', 'Repartir en horizontal (3 nodos o más)', '<path d="M4 3v18" /><path d="M20 3v18" /><rect x="8" y="7" width="3" height="10" /><rect x="13" y="7" width="3" height="10" />'],
@@ -1008,7 +1008,6 @@ class App {
   setTool(tool) {
     this.tool = tool;
     this.interaction?.clearInsertPreview();
-    this.interaction?.clearAlignGuides();
     // Cambiar de herramienta abandona cualquier trayectoria a medio trazar.
     if (tool !== 'connect') this.interaction?.cancelRoute();
     if (tool !== 'route') this.interaction?.setRouteEdge(null);

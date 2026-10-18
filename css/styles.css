@@ -453,18 +453,6 @@ body {
   stroke-dasharray: 6 4;
   opacity: 0.85;
 }
-/* Guías de alineación: las líneas en las que el nodo arrastrado acaba de
-   encajar (borde o centro). Sólo se ven mientras dura el arrastre. */
-.align-guides {
-  pointer-events: none;
-}
-.align-guide {
-  stroke: var(--accent);
-  stroke-width: 1;
-  stroke-dasharray: 5 4;
-  opacity: 0.75;
-}
-
 .node-shape {
   fill: var(--node-fill);
   stroke: var(--node-stroke);
