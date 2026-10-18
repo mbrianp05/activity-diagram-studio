@@ -57,13 +57,17 @@ function nodeOf(d, id) {
 }
 
 /**
- * Lado que «mira» al punto indicado. Sólo sirve de ayuda cuando el usuario no
- * ha pulsado una bolita concreta (por ejemplo, si hace clic en el cuerpo del
- * nodo): el lado definitivo es el que él elija.
+ * Lado que «mira» al punto indicado: el más cercano **en términos relativos**
+ * (qué parte de la mitad del ancho o del alto se ha recorrido), no una
+ * comparación en píxeles sueltos — en una caja alargada eso manda siempre al
+ * lado horizontal y acaba metiendo la flecha por el que no toca. A igualdad
+ * gana el lado horizontal, que es por donde suelen ir las flechas. Sólo sirve de
+ * ayuda cuando el usuario no ha pulsado una bolita concreta (por ejemplo, si
+ * hace clic en el cuerpo del nodo): el lado definitivo es el que él elija.
  */
 export function sideNear(node, p) {
-  const dx = p.x - centerX(node);
-  const dy = p.y - centerY(node);
+  const dx = (p.x - centerX(node)) / (node.w / 2 || 1);
+  const dy = (p.y - centerY(node)) / (node.h / 2 || 1);
   if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left';
   return dy > 0 ? 'bottom' : 'top';
 }

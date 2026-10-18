@@ -532,9 +532,14 @@ export class Interaction {
         w.y > n.y + n.h + tol
       )
         continue;
+      // La bolita se agarra con una tolerancia acotada por el tamaño del nodo:
+      // si la tolerancia es la misma para todos, dentro de una caja grande
+      // cualquier clic queda cerca de alguna bolita y la flecha entra siempre
+      // por el lado equivocado en vez de mirar dónde ha caído el puntero.
+      const tolNodo = Math.min(tol, Math.max(8, Math.min(n.w, n.h) * 0.3));
       for (const p of this.app.renderer.portsOf(n)) {
         const dist = Math.hypot(p.x - w.x, p.y - w.y);
-        if (dist <= tol && (!mejor || dist < mejor.dist))
+        if (dist <= tolNodo && (!mejor || dist < mejor.dist))
           mejor = { node: n, side: p.side, p, dist };
       }
     }
@@ -542,14 +547,15 @@ export class Interaction {
   }
 
   /**
-   * Destino de la flecha bajo el puntero: la bolita más cercana (no hace falta
-   * apuntarla) y, si no hay ninguna a tiro, el nodo que hay debajo. El lado lo
-   * da la bolita; si el puntero está en el cuerpo, el lado más cercano.
+   * Destino de la flecha bajo el puntero. Dentro del cuerpo de un nodo manda el
+   * punto donde se ha hecho clic (el lado lo decide `sideNear`); la bolita sólo
+   * se respeta si el puntero está realmente encima de ella. Fuera del cuerpo se
+   * busca la bolita más cercana, para no tener que apuntar al píxel.
    */
   targetAt(w, tolPantalla = 26) {
-    const bolita = this.portAt(w, tolPantalla);
-    if (bolita) return bolita;
     const nodo = nodeAt(this.app.diagram, w.x, w.y);
+    const bolita = this.portAt(w, nodo ? 10 : tolPantalla);
+    if (bolita) return bolita;
     return nodo ? { node: nodo, side: null, p: null, dist: 0 } : null;
   }
 

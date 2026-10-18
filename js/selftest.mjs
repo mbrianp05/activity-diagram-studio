@@ -7,7 +7,7 @@ import { validate, summary } from './validate.js';
 import { createSim, start, step, evaluate } from './simulate.js';
 import {
   anchorFor, pickSides, edgeGeometry, labelSpot, guidePoint, avoidNodes,
-  nearestOnPolyline, END_RING_GAP, ARROW_GAP,
+  nearestOnPolyline, sideNear, END_RING_GAP, ARROW_GAP,
 } from './routing.js';
 import { unionBox, alignTargets, snapMove, snapSize, planAlign, planDistribute } from './align.js';
 import { shapeAttrs, tridentePuntos, ACTIVITY_RX } from './render.js';
@@ -587,6 +587,32 @@ console.log('\n17. Guía del trazo y puntos de control');
   check('si el tramo horizontal está más cerca, ése', p3.x === 40 && p3.y === 0, JSON.stringify(p3));
   const p2 = nearestOnPolyline(pts, -80, -40);
   check('fuera del recorrido cae en el extremo', p2.x === 0 && p2.y === 0, JSON.stringify(p2));
+}
+
+console.log('\n17b. El lado de entrada: el más cercano al puntero');
+{
+  const N = (type, x, y, w, h) => ({ id: 'n', type, x, y, w, h, label: '', note: '' });
+  const act = N('activity', 0, 0, 176, 64);
+  check('cerca del borde izquierdo -> izquierda', sideNear(act, { x: 20, y: 32 }) === 'left', sideNear(act, { x: 20, y: 32 }));
+  check('cerca del borde derecho -> derecha', sideNear(act, { x: 160, y: 32 }) === 'right', sideNear(act, { x: 160, y: 32 }));
+  check('cerca del borde superior -> arriba', sideNear(act, { x: 88, y: 6 }) === 'top', sideNear(act, { x: 88, y: 6 }));
+  check('cerca del borde inferior -> abajo', sideNear(act, { x: 88, y: 58 }) === 'bottom', sideNear(act, { x: 88, y: 58 }));
+  // En una caja alargada manda la cercanía proporcional: 12 px por debajo del
+  // centro están mucho más cerca del borde inferior que del derecho, aunque en
+  // píxeles sueltos "gane" el horizontal.
+  check('un poco por debajo del centro, cerca de un lado -> abajo',
+    sideNear(act, { x: 100, y: 40 }) === 'bottom', sideNear(act, { x: 100, y: 40 }));
+  check('junto al borde izquierdo, un poco por encima -> izquierda',
+    sideNear(act, { x: 24, y: 20 }) === 'left', sideNear(act, { x: 24, y: 20 }));
+  check('el centro cae en un lado horizontal',
+    ['left', 'right'].includes(sideNear(act, { x: 88, y: 32 })), sideNear(act, { x: 88, y: 32 }));
+  // Cuadrados y círculos: se comportan como antes.
+  const dia = N('decision', 0, 0, 132, 132);
+  check('rombo: arriba', sideNear(dia, { x: 66, y: 10 }) === 'top', sideNear(dia, { x: 66, y: 10 }));
+  check('rombo: izquierda', sideNear(dia, { x: 10, y: 66 }) === 'left', sideNear(dia, { x: 10, y: 66 }));
+  const ini = N('start', 0, 0, 20, 20);
+  check('círculo: izquierda', sideNear(ini, { x: 3, y: 10 }) === 'left', sideNear(ini, { x: 3, y: 10 }));
+  check('círculo: abajo', sideNear(ini, { x: 10, y: 18 }) === 'bottom', sideNear(ini, { x: 10, y: 18 }));
 }
 
 console.log('\n18. Copiar y pegar (portapapeles)');
