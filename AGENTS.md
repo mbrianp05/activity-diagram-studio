@@ -72,7 +72,7 @@ Dependencias: `routing.js` no importa nada del DOM salvo constantes; `model.js` 
 - El render se reconstruye con `textContent = ''` + `createElementNS`; no hay templating ni frameworks.
 - La interacción se une al SVG por atributos `data-*`: `data-id`, `data-edge`, `data-resize`, `data-handle`, `data-lane-title`, `data-lane-resize`, `data-edge-label`, `data-route-point`. Cualquier elemento interactivo nuevo necesita su `data-*` en `render.js` y su rama en `interact.js:onPointerDown`.
 - `interact.js` reexporta símbolos al final (línea ~511) sólo por compatibilidad; no añadas imports desde ahí.
-- El overlay puede mostrar un fantasma de inserción (`.insert-preview`), la arista temporal (`edgeGeometry` con un flujo ficticio), las bolitas fantasma del trazado (`.port-hints`) y los puntos de giro editables (`.route-points`). Todo eso se borra al cancelar el gesto; nada de eso debe exportarse.
+- El overlay puede mostrar un fantasma de inserción (`.insert-preview`), la arista temporal (`.temp-edge`: trazo sólido en `--faint` con `marker-end="url(#arrow-temp)"`, sin puntos de giro encima), las bolitas fantasma del trazado (`.port-hints`) y los puntos de giro editables (`.route-points`, sólo con la herramienta de recorrido). Todo eso se borra al cancelar el gesto; nada de eso debe exportarse.
 - Al conectar se vuelve a `select` y la flecha queda marcada. La herramienta `route` (editar el recorrido de una flecha existente) no está en la paleta: se entra desde el botón del inspector.
 - La barra lateral izquierda lleva herramientas, carriles **e inspector** (`.inspector` va dentro de `.palette`): el grid es de dos columnas.
 

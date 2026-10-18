@@ -53,6 +53,9 @@ const MARKER = `
     <marker id="arrow-selected" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M0 0 10 5 0 10z" fill="#f4f4f6" />
     </marker>
+    <marker id="arrow-temp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 10 5 0 10z" fill="#63636b" />
+    </marker>
   </defs>`;
 
 /** Genera un SVG autónomo con estilos embebidos y sin elementos de edición. */

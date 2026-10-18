@@ -499,7 +499,10 @@ export class Interaction {
       tip: null,
       hover: null,
     };
-    this.tempEdge = svgEl("path", { class: "temp-edge" });
+    this.tempEdge = svgEl("path", {
+      class: "temp-edge",
+      "marker-end": "url(#arrow-temp)",
+    });
     this.overlay.appendChild(this.tempEdge);
     this.app.select({ type: "node", id: from });
     this.app.status(
@@ -684,8 +687,9 @@ export class Interaction {
   }
 
   /**
-   * Puntos de control visibles: los del flujo en edición (herramienta ruta) o
-   * los que ya se han fijado mientras se traza una flecha nueva.
+   * Puntos de control visibles: los del flujo en edición (herramienta ruta).
+   * Mientras se traza una flecha nueva no se dibujan: los giros ya se ven en
+   * el propio trazo y el preview queda limpio.
    */
   drawRouteHandles() {
     const pendiente = this.route ? this.route.way : null;
@@ -693,8 +697,10 @@ export class Interaction {
     if (!pendiente && this.routeEdge)
       edge = edgeById(this.app.diagram, this.routeEdge);
     const pts =
-      pendiente || (edge && Array.isArray(edge.way) ? edge.way : null) || [];
-    const id = pendiente ? "pendiente" : edge?.id || "";
+      (pendiente && []) ||
+      (edge && Array.isArray(edge.way) ? edge.way : null) ||
+      [];
+    const id = edge?.id || "";
     const key = `${id}:${pts.length}`;
     if (!this.routeLayer) {
       this.routeLayer = svgEl("g", { class: "route-points" });
@@ -715,7 +721,7 @@ export class Interaction {
     const r = 5 / (this.app.diagram.view.k || 1);
     pts.forEach((p, i) => {
       const c = svgEl("circle", {
-        class: `route-point${pendiente ? " pending" : ""}`,
+        class: "route-point",
         cx: p.x,
         cy: p.y,
         r,
