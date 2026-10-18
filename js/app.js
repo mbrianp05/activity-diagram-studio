@@ -250,6 +250,15 @@ class App {
       }
       this.pushHistory();
       removeNode(this.diagram, ref.id);
+      // Si el nodo borrado es el origen del trazado en curso, la flecha se queda
+      // sin punto de partida: se cancela el trazado (y con él su preview). Si era
+      // el destino apuntado, se olvida el enganche.
+      const route = this.interaction?.route;
+      if (route?.from === ref.id) this.interaction.cancelRoute();
+      else if (route?.hover?.id === ref.id) {
+        route.hover = null;
+        this.interaction.clearPortHints();
+      }
     }
     this.setSelection([]);
   }
