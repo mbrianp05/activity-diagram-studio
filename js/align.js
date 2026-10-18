@@ -68,6 +68,26 @@ function mejorCorreccion(targets, lines0, tol) {
 const GUIDE_PAD = 16;
 
 /**
+ * Corrección de una coordenada para que caiga en la línea de otro nodo (su
+ * borde o su centro) si queda a tiro. Es el enganche de las **líneas** de una
+ * flecha al trazarla: los tramos y los cambios de dirección salen así alineados
+ * con los nodos sin que el usuario tenga que afinar el ratón.
+ * @param v coordenada actual
+ * @param lineas valores de referencia (`alignTargets`)
+ * @param tol margen en unidades del mundo (el caller lo divide por el zoom)
+ * @returns el desplazamiento a sumar (0 si no hay nada a tiro)
+ */
+export function snapLine(v, lineas, tol = 6) {
+  let mejor = null;
+  for (const t of lineas || []) {
+    const d = (typeof t === 'number' ? t : t.v) - v;
+    if (Math.abs(d) > tol) continue;
+    if (!mejor || Math.abs(d) < Math.abs(mejor)) mejor = d;
+  }
+  return mejor || 0;
+}
+
+/**
  * Corrige el desplazamiento de un grupo en movimiento para que encaje en las
  * líneas de los nodos que no se mueven.
  *

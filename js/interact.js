@@ -34,7 +34,7 @@ import {
   nearestOnPolyline,
 } from "./routing.js";
 import { LANE_HEADER, shapeAttrs } from "./render.js";
-import { snapMove, snapSize, unionBox } from "./align.js";
+import { snapMove, snapSize, snapLine, alignTargets, unionBox } from "./align.js";
 
 const NS = "http://www.w3.org/2000/svg";
 const GRID = 8;
@@ -614,6 +614,9 @@ export class Interaction {
     if (last && Math.abs(last.x - p.x) < 1 && Math.abs(last.y - p.y) < 1)
       return;
     r.way.push({ x: Math.round(p.x), y: Math.round(p.y) });
+    // El giro ya está fijado: el siguiente tramo vuelve a poder ir en
+    // cualquier dirección (y a doblar solo una vez más hacia el puntero).
+    r.axis = null;
     this.app.status(
       `${r.way.length} punto(s) de giro · clic en el destino para cerrar el flujo · Esc cancela`,
     );
@@ -1010,13 +1013,34 @@ export class Interaction {
     const p0 = { x: ancla.x + n0.x * 1.5, y: ancla.y + n0.y * 1.5 };
     const cursor = w || { x: r.tip?.x ?? p0.x, y: r.tip?.y ?? p0.y };
     const base = r.way.length ? r.way[r.way.length - 1] : p0;
-    r.tip = guidePoint(base, cursor, r.axis);
-    r.axis = Math.abs(r.tip.x - base.x) > ALIGN ? "x" : "y";
-    const pts = userRouteTip(p0, n0, r.way, r.tip);
+    // El trazo sale de `base` recto en el eje elegido (para que no parpadee al
+    // mover el ratón en diagonal) y se desvía una sola vez hacia el puntero:
+    // tras un giro, la flecha puede seguir recta y doblar hacia el cursor sin
+    // que haga falta otro clic derecho. Ese codo va alineado con las líneas de
+    // los nodos; a partir de ahí el último lado sólo se estira.
+    const eje = guidePoint(base, cursor, r.axis);
+    r.axis = Math.abs(eje.x - base.x) > ALIGN ? "x" : "y";
+    const punta = this.snapTip(cursor, r.axis);
+    r.tip = r.axis === "x" ? { x: punta.x, y: base.y } : { x: base.x, y: punta.y };
+    const pts = userRouteTip(p0, n0, r.way, [r.tip, punta]);
     this.tempEdge.setAttribute(
       "d",
-      edgePath({ p1: p0, p2: r.tip, pts, mid: r.tip }),
+      edgePath({ p1: p0, p2: punta, pts, mid: punta }),
     );
+  }
+
+  /**
+   * El puntero se engancha a la línea de los nodos (borde o centro) del eje
+   * del tramo final: si el último lado es vertical se alinea la X, y si es
+   * horizontal la Y. Así los cambios de dirección caen solos sobre los nodos.
+   */
+  snapTip(cursor, axis) {
+    const tol = GUIDE_PX / (this.app.diagram.view.k || 1);
+    const t = alignTargets(this.app.diagram.nodes);
+    if (axis === "x") {
+      return { x: cursor.x + snapLine(cursor.x, t.xs, tol), y: cursor.y };
+    }
+    return { x: cursor.x, y: cursor.y + snapLine(cursor.y, t.ys, tol) };
   }
 
   clearTempEdge() {

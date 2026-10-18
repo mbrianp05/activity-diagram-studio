@@ -7,9 +7,9 @@ import { validate, summary } from './validate.js';
 import { createSim, start, step, evaluate } from './simulate.js';
 import {
   anchorFor, pickSides, edgeGeometry, labelSpot, guidePoint, avoidNodes,
-  nearestOnPolyline, sideNear, END_RING_GAP, ARROW_GAP,
+  nearestOnPolyline, sideNear, userRouteTip, END_RING_GAP, ARROW_GAP,
 } from './routing.js';
-import { unionBox, alignTargets, snapMove, snapSize, planAlign, planDistribute } from './align.js';
+import { unionBox, alignTargets, snapMove, snapSize, snapLine, planAlign, planDistribute } from './align.js';
 import { shapeAttrs, tridentePuntos, ACTIVITY_RX } from './render.js';
 
 /** ¿Algún tramo del trazado atraviesa el interior del rectángulo? */
@@ -613,6 +613,64 @@ console.log('\n17b. El lado de entrada: el más cercano al puntero');
   const ini = N('start', 0, 0, 20, 20);
   check('círculo: izquierda', sideNear(ini, { x: 3, y: 10 }) === 'left', sideNear(ini, { x: 3, y: 10 }));
   check('círculo: abajo', sideNear(ini, { x: 10, y: 18 }) === 'bottom', sideNear(ini, { x: 10, y: 18 }));
+}
+
+console.log('\n17c. El trazo dobla solo una vez tras un giro');
+{
+  const orto = (pts) => pts.every((p, i) => i === 0
+    || p.x === pts[i - 1].x || p.y === pts[i - 1].y);
+  const p0 = { x: 0, y: 0 };
+  const n0 = { x: 1, y: 0 };
+
+  // Sin giros: el trazo sale recto en el eje elegido y llega al puntero con un
+  // único cambio de dirección.
+  const cola = [{ x: 120, y: 0 }, { x: 120, y: 60 }];
+  const pts = userRouteTip(p0, n0, [], cola);
+  check('un tramo recto y un desvío, todo ortogonal', orto(pts), JSON.stringify(pts));
+  check('el desvío ocurre una sola vez',
+    pts.filter((p) => p.x === 120).length === 2, JSON.stringify(pts));
+  check('el trazo llega al puntero',
+    pts[pts.length - 1].x === 120 && pts[pts.length - 1].y === 60, JSON.stringify(pts));
+
+  // La punta al mismo alto que la base: el desvío tiene longitud cero y
+  // desaparece (el trazo queda recto).
+  const recto = userRouteTip(p0, n0, [], [{ x: 120, y: 0 }, { x: 120, y: 0 }]);
+  check('sin desvío no queda un tramo de cero', orto(recto) && recto.length <= 2, JSON.stringify(recto));
+
+  // Con un giro de por medio, el tramo nuevo también puede doblar una vez: la
+  // flecha baja hasta el giro, sigue recta y se desvía al puntero.
+  const conGiro = userRouteTip(p0, n0, [{ x: 40, y: -30 }], [{ x: 40, y: 90 }, { x: 200, y: 90 }]);
+  check('tras el giro vuelve a poder doblar', orto(conGiro), JSON.stringify(conGiro));
+  check('el desvío ocurre en el tramo del puntero',
+    conGiro[conGiro.length - 1].x === 200 && conGiro[conGiro.length - 1].y === 90, JSON.stringify(conGiro));
+  check('y no encadena un segundo desvío automático',
+    !conGiro.slice(conGiro.findIndex((p) => p.x === 40 && p.y === -30) + 1)
+      .some((p, i, t) => i > 0 && p.x !== t[i - 1].x && p.y !== t[i - 1].y),
+    JSON.stringify(conGiro));
+
+  // Un solo punto de cola (sin desvío) sigue funcionando.
+  check('también acepta un único punto',
+    orto(userRouteTip(p0, n0, [], [{ x: 90, y: 0 }])), JSON.stringify(userRouteTip(p0, n0, [], [{ x: 90, y: 0 }])));
+}
+
+console.log('\n17d. Enganche de las líneas de una flecha a los nodos');
+{
+  const lineas = [{ v: 100 }, { v: 300 }, { v: 500 }];
+  check('una línea a 4 px se engancha exacta', snapLine(104, lineas, 6) === -4, snapLine(104, lineas, 6));
+  check('gana la línea más cercana', snapLine(297, lineas, 6) === 3, snapLine(297, lineas, 6));
+  check('lejos de toda línea no corrige', snapLine(200, lineas, 6) === 0, snapLine(200, lineas, 6));
+  check('el margen es el que se le pasa', snapLine(200, lineas, 10) === -100 + 100, snapLine(200, lineas, 10));
+  check('sin líneas no corrige', snapLine(120, [], 6) === 0);
+  check('admite números sueltos', snapLine(104, [100, 300], 6) === -4, snapLine(104, [100, 300], 6));
+
+  // Las referencias son las líneas reales de los nodos (borde, centro y borde).
+  const g = createDiagram();
+  const a = createNode('activity', 300, 300);
+  g.nodes.push(a);
+  const t = alignTargets(g.nodes);
+  check('las referencias del enganche son borde, centro y borde',
+    t.xs.length === 3 && t.ys.length === 3, JSON.stringify(t.xs.map((q) => q.v)));
+  check('y son las del nodo', t.xs.every((q) => q.v === a.x || q.v === a.x + a.w / 2 || q.v === a.x + a.w));
 }
 
 console.log('\n18. Copiar y pegar (portapapeles)');

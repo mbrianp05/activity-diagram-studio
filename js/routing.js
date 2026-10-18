@@ -192,14 +192,21 @@ export function linkRoute(p0, n0, p3, n1) {
 }
 
 /**
- * Trozo visible mientras se traza: desde el ancla de salida hasta el punto que
- * guía el cursor, pasando por los puntos de giro ya fijados. `tip` llega
- * alineado con el último punto (ver `guidePoint`).
+ * Trozo visible mientras se traza: desde el ancla de salida, pasando por los
+ * puntos de giro ya fijados y terminando en `cola`, que son los dos últimos
+ * puntos del trazo: la proyección del puntero sobre la línea en la que se está
+ * (`guidePoint`) y el puntero. Entre ambos se cuela **un** cambio de dirección
+ * automático, que es lo que permite que, después de un giro, la flecha siga
+ * recta y luego se desvíe hacia donde está el cursor sin tener que volver a
+ * clicar. Más de uno no: `orthogonalize` mete como mucho un codo por tramo, así
+ * que a partir del primero el último lado sólo se estira.
  */
-export function userRouteTip(p0, n0, way, tip) {
-  const pts = [p0, stub(p0, n0, way[0] || tip)];
+export function userRouteTip(p0, n0, way, cola) {
+  const fin = (Array.isArray(cola) ? cola : [cola]).filter(Boolean);
+  const objetivo = way[0] || fin[0] || p0;
+  const pts = [p0, stub(p0, n0, objetivo)];
   for (const p of way) pts.push({ x: p.x, y: p.y });
-  pts.push({ x: tip.x, y: tip.y });
+  for (const p of fin) pts.push({ x: p.x, y: p.y });
   return orthogonalize(pts);
 }
 
