@@ -798,7 +798,6 @@ body {
 .inspector {
   margin-top: 14px;
   padding-top: 2px;
-  border-top: 1px solid var(--border);
 }
 .inspector h2 {
   font-size: 10px;

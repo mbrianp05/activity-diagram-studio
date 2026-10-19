@@ -2,11 +2,11 @@
  * Pruebas de la lógica del diagrama (sin DOM): modelo, validación y simulación.
  * Ejecutar con:  node js/selftest.mjs
  */
-import { sampleDiagram, createNode, createEdge, createDiagram, createLane, deserialize, assignLanes, shiftLanes, swapLanes, removeLaneAt, laneTop, nodeById, NODE_TYPES, copyGroup, pasteGroup, groupBounds, freeSpot } from './model.js';
+import { sampleDiagram, createNode, createEdge, createDiagram, createLane, deserialize, assignLanes, shiftLanes, swapLanes, removeLaneAt, laneMinHeight, laneTop, nodeById, NODE_TYPES, copyGroup, pasteGroup, groupBounds, freeSpot, LANE_PAD } from './model.js';
 import { validate, summary } from './validate.js';
 import { createSim, start, step, evaluate } from './simulate.js';
 import {
-  anchorFor, pickSides, edgeGeometry, labelSpot, guidePoint, avoidNodes,
+  anchorFor, anchors, pickSides, nodeSides, edgeGeometry, labelSpot, guidePoint, avoidNodes,
   nearestOnPolyline, sideNear, userRouteTip, END_RING_GAP, ARROW_GAP,
 } from './routing.js';
 import { unionBox, alignTargets, snapMove, snapSize, snapLine, planAlign, planDistribute } from './align.js';
@@ -397,6 +397,52 @@ console.log('\n14. Carriles: los nodos no cambian de carril');
   check('eliminar un carril', d.lanes.length === 1);
   check('los nodos del carril eliminado pasan al que queda', abajo.lane === 0);
   check('y no se salen de la banda', enBanda(d, arriba) && enBanda(d, abajo), `${arriba.y},${abajo.y}`);
+}
+
+console.log('\n14b. Altura minima del carril y desplazamiento de los siguientes');
+{
+  const tres = () => {
+    const d = createDiagram();
+    d.lanes = [createLane('Cliente', 0), createLane('Sistema', 1), createLane('Almacen', 2)];
+    d.lanes.forEach((l, i) => { l.height = 200; });
+    const c = createNode('activity', 400, 100, { label: 'Cliente pide' });
+    const s = createNode('activity', 400, 300, { label: 'Sistema cobra' });
+    const a = createNode('activity', 400, 500, { label: 'Almacen guarda' });
+    d.nodes.push(c, s, a);
+    assignLanes(d);
+    return { d, c, s, a };
+  };
+  const enBanda = (d, n) => n.y >= laneTop(d, n.lane)
+    && n.y + n.h <= laneTop(d, n.lane) + d.lanes[n.lane].height;
+
+  // El alto minimo lo fija el nodo mas alto del carril (con margen).
+  let { d, s, a } = tres();
+  const alto = s.h + LANE_PAD * 2;
+  check('el alto minimo lo marca el nodo mas alto del carril',
+    laneMinHeight(d, 1) === alto, `${laneMinHeight(d, 1)} vs ${alto}`);
+  check('un carril sin nodos no baja del minimo general',
+    laneMinHeight({ lanes: [createLane('X', 0)], nodes: [] }, 0) === 80, laneMinHeight({ lanes: [createLane('X', 0)], nodes: [] }, 0));
+
+  // Encoger un carril intermedio hasta su mínimo: los nodos no se salen.
+  const yTercio = a.y;
+  const delta = alto - d.lanes[1].height;
+  d.lanes[1].height = alto;
+  shiftLanes(d, 1, delta);
+  check('encogido hasta el minimo, nadie se sale de su banda',
+    enBanda(d, s) && enBanda(d, a), JSON.stringify({ s: s.y, a: a.y }));
+  check('y el nodo del propio carril se recoloca dentro', enBanda(d, s), `${s.y}`);
+  check('y los del carril de abajo suben con la banda', a.y === yTercio + delta, `${a.y} vs ${yTercio + delta}`);
+
+  // Agrandar un carril intermedio: los de abajo suben con su banda.
+  ({ d, s, a } = tres());
+  const yAntes = a.y;
+  d.lanes[1].height += 120;
+  shiftLanes(d, 1, 120);
+  check('los carriles posteriores se mueven con la banda', a.y === yAntes + 120, `${a.y} vs ${yAntes + 120}`);
+  check('y siguen dentro de la suya', enBanda(d, s) && enBanda(d, a));
+  check('el del propio carril se queda quieto', s.y === 268, `${s.y}`);
+  check('el de arriba tampoco se mueve',
+    laneTop(d, 1) === 200 && laneTop(d, 2) === 200 + d.lanes[1].height);
 }
 
 console.log('\n15. El lado lo elige el usuario, el reparto es equitativo');
@@ -933,6 +979,11 @@ console.log('\n23. Nodos de proceso, tiempo y notificación');
 
   check('existen los cuatro tipos nuevos', ['proceso', 'tiempo', 'enviar', 'recibir']
     .every((t) => !!NODE_TYPES[t]), Object.keys(NODE_TYPES).join(','));
+  check('fork y join no llevan etiqueta por defecto',
+    createNode('fork', 0, 0).label === '' && createNode('join', 0, 0).label === '',
+    `"${createNode('fork', 0, 0).label}"`);
+  check('el diagrama de ejemplo no rotula fork ni join',
+    sampleDiagram().nodes.filter((n) => n.type === 'fork' || n.type === 'join').every((n) => !n.label));
   check('validación sin errores', summary(validate(g)).error === 0, JSON.stringify(validate(g)));
   check('la simulación los atraviesa', run(g, {}).sim.finished);
 
@@ -945,12 +996,15 @@ console.log('\n23. Nodos de proceso, tiempo y notificación');
     ps.every((p) => (p[0] === env.x + env.w ? p[1] === env.y + env.h / 2 : p[1] === env.y || p[1] === env.y + env.h)),
     JSON.stringify(ps));
 
-  // Recibir notificación: el pico entra hacia dentro por la izquierda.
+  // Recibir notificación: muesca triangular hacia dentro por la izquierda.
   const pr = shapeAttrs(rec).attrs.points.split(' ').map((p) => p.split(',').map(Number));
-  check('recibir: la muesca parte del borde izquierdo',
-    Math.min(...pr.map((p) => p[0])) === rec.x, JSON.stringify(pr));
+  const puntaRec = pr.find((p) => p[0] > rec.x && p[0] < rec.x + rec.w);
+  check('recibir: la muesca entra hacia dentro por la izquierda',
+    !!puntaRec && puntaRec[1] === rec.y + rec.h / 2
+    && Math.min(...pr.map((p) => p[0])) === rec.x, JSON.stringify(pr));
   check('recibir: los otros tres lados son rectos',
-    pr.every((p) => (p[0] === rec.x ? p[1] === rec.y + rec.h / 2 : p[1] === rec.y || p[1] === rec.y + rec.h)),
+    pr.filter((p) => p !== puntaRec).every((p) =>
+      p[1] === rec.y || p[1] === rec.y + rec.h || p[0] === rec.x || p[0] === rec.x + rec.w),
     JSON.stringify(pr));
 
   // Tiempo: reloj de arena (barras arriba y abajo y la cruz en el centro).
@@ -962,6 +1016,33 @@ console.log('\n23. Nodos de proceso, tiempo y notificación');
     && pt.some((p) => p[0] === tie.x + tie.w && p[1] === tie.y + tie.h), JSON.stringify(pt));
   check('tiempo: las diagonales se cruzan en el centro',
     pt.filter((p) => p[0] === cx && p[1] === cy).length === 2, JSON.stringify(pt));
+  check('tiempo: algo más pequeño que una actividad',
+    tie.w < NODE_TYPES.activity.w && tie.h < NODE_TYPES.activity.h, `${tie.w}x${tie.h}`);
+  check('tiempo: es cuadrado', tie.w === tie.h, `${tie.w}x${tie.h}`);
+  check('tiempo: sólo se conecta por arriba y por abajo',
+    Object.keys(anchors(tie)).join(',') === 'top,bottom'
+    && nodeSides(tie).join(',') === 'top,bottom', Object.keys(anchors(tie)).join(','));
+  check('tiempo: un flujo antiguo por el lado se recoloca arriba o abajo',
+    pickSides(g, { from: tie.id, to: fin.id, fromSide: 'right', toSide: 'left' }).from === 'bottom',
+    JSON.stringify(pickSides(g, { from: tie.id, to: fin.id, fromSide: 'right', toSide: 'left' })));
+  check('tiempo: al pulsar su cuerpo el lado es vertical',
+    sideNear(tie, { x: tie.x - 100, y: tie.y + tie.h + 100 }) === 'bottom'
+    && sideNear(tie, { x: tie.x + 300, y: tie.y - 60 }) === 'top');
+  const barraP = createNode('fork', 0, 0);
+  check('fork/join: sólo se conectan por los lados',
+    nodeSides(barraP).join(',') === 'left,right'
+    && Object.keys(anchors(barraP)).join(',') === 'left,right', Object.keys(anchors(barraP)).join(','));
+  check('fork/join: al pulsar el cuerpo el lado es horizontal',
+    sideNear(barraP, { x: barraP.x - 200, y: barraP.y + 300 }) === 'left'
+    && sideNear(barraP, { x: barraP.x + barraP.w + 200, y: barraP.y - 300 }) === 'right');
+  const gb = createDiagram();
+  const destino = createNode('join', 300, 0);
+  gb.nodes.push(barraP, destino);
+  const ladosViejos = pickSides(gb, {
+    from: barraP.id, to: destino.id, fromSide: 'top', toSide: 'bottom',
+  });
+  check('fork/join: un flujo antiguo por arriba/abajo se recoloca a un lado',
+    ladosViejos.from === 'left' && ladosViejos.to === 'right', JSON.stringify(ladosViejos));
 
   // Proceso: la misma caja redondeada que la actividad + tridente invertido.
   const shapePro = shapeAttrs(pro);

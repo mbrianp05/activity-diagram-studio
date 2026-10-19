@@ -8,9 +8,9 @@ import {
   createDiagram, createNode, createEdge, sampleDiagram, serialize, deserialize,
   nodeById, edgeById, outEdges, inEdges, NODE_TYPES,
   bounds, laneIndexAt, addNode, addEdge, removeNode, removeEdge, dotMax,
-  swapLanes, removeLaneAt, copyGroup, pasteGroup, groupBounds, freeSpot,
+  removeLaneAt, copyGroup, pasteGroup, groupBounds, freeSpot,
 } from './model.js';
-import { SIDES } from './routing.js';
+import { nodeSides } from './routing.js';
 import { planAlign, planDistribute } from './align.js';
 import { Renderer, LANE_HEADER } from './render.js';
 import { Interaction } from './interact.js';
@@ -425,12 +425,6 @@ class App {
     this.commit('Renombrar carril');
   }
 
-  moveLane(index, dir) {
-    this.pushHistory();
-    if (!swapLanes(this.diagram, index, dir)) { this.undoStack.pop(); return; }
-    this.commit('Reordenar carriles');
-  }
-
   removeLane(index) {
     if (this.diagram.lanes.length <= 1) return this.toast('Debe quedar al menos un carril.', true);
     this.pushHistory();
@@ -445,13 +439,9 @@ class App {
       const li = document.createElement('li');
       const count = this.diagram.nodes.filter((n) => n.lane === i).length;
       li.innerHTML = `<span class="name" title="Doble clic para renombrar"></span>
-        <button class="mini" data-act="up" title="Subir" aria-label="Subir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14l6-6 6 6" /></svg></button>
-        <button class="mini" data-act="down" title="Bajar" aria-label="Bajar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10l6 6 6-6" /></svg></button>
         <button class="mini" data-act="del" title="Eliminar" aria-label="Eliminar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg></button>`;
       li.querySelector('.name').textContent = `${lane.name} (${count})`;
       li.querySelector('.name').ondblclick = () => this.editLaneName(i);
-      li.querySelector('[data-act=up]').onclick = () => this.moveLane(i, -1);
-      li.querySelector('[data-act=down]').onclick = () => this.moveLane(i, 1);
       li.querySelector('[data-act=del]').onclick = () => this.removeLane(i);
       ul.appendChild(li);
     });
@@ -594,17 +584,20 @@ class App {
     const from = nodeById(this.diagram, e.from);
     const to = nodeById(this.diagram, e.to);
     const giros = (e.way || []).length;
-    const opciones = (sel) => SIDES.map((s) => `<option value="${s}"${s === sel ? ' selected' : ''}>${SIDE_LABEL[s]}</option>`).join('');
+    const opciones = (sel, lados) => {
+      const lista = lados.includes(sel) ? lados : [...lados, sel];
+      return lista.map((s) => `<option value="${s}"${s === sel ? ' selected' : ''}>${SIDE_LABEL[s]}</option>`).join('');
+    };
     return `
       <h2>Flujo</h2>
       <p class="kv"><b>${esc(from?.label ?? '?')}</b> → <b>${esc(to?.label ?? '?')}</b></p>
       <div class="field">
         <label>Sale por</label>
-        <select id="f-side-out">${opciones(e.fromSide)}</select>
+        <select id="f-side-out">${opciones(e.fromSide, nodeSides(from))}</select>
       </div>
       <div class="field">
         <label>Entra por</label>
-        <select id="f-side-in">${opciones(e.toSide)}</select>
+        <select id="f-side-in">${opciones(e.toSide, nodeSides(to))}</select>
       </div>
       <div class="field">
         <label>Etiqueta</label>
@@ -653,9 +646,9 @@ class App {
         this.pushHistory();
         const t = NODE_TYPES[type];
         n.type = type;
-        if (type === 'decision' || type === 'start' || type === 'end' || type === 'stop') {
+        if (type === 'decision' || type === 'tiempo' || type === 'start' || type === 'end' || type === 'stop') {
           const base = Math.max(t.minW, t.minH, n.w, n.h);
-          const s = type === 'decision' ? base : Math.min(dotMax(type), base);
+          const s = type === 'start' || type === 'end' || type === 'stop' ? Math.min(dotMax(type), base) : base;
           n.w = s; n.h = s;
         } else {
           n.w = Math.max(t.minW, n.w);

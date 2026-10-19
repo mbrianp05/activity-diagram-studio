@@ -19,6 +19,21 @@ const DOT_TYPES = new Set(['start', 'end', 'stop']);
 export function anchors(node) {
   const cx = node.x + node.w / 2;
   const cy = node.y + node.h / 2;
+  if (node.type === 'tiempo') {
+    // El reloj de arena sólo se conecta por arriba y por abajo: es su forma la
+    // que lo pide (cruz en el centro), no admite entradas por los lados.
+    return {
+      top: { x: cx, y: node.y },
+      bottom: { x: cx, y: node.y + node.h },
+    };
+  }
+  if (node.type === 'fork' || node.type === 'join') {
+    // La barra de paralelismo sólo recibe y reparte por los lados.
+    return {
+      left: { x: node.x, y: cy },
+      right: { x: node.x + node.w, y: cy },
+    };
+  }
   if (DOT_TYPES.has(node.type)) {
     const r = Math.min(node.w, node.h) / 2;
     return {
@@ -46,6 +61,18 @@ export function sideNormal(side) {
 /** Los cuatro lados de conexión de un nodo. */
 export const SIDES = ['left', 'right', 'top', 'bottom'];
 
+/**
+ * Lados de conexión que admite un nodo. El reloj de arena (tiempo) sólo entra y
+ * sale por arriba y por abajo; la barra de paralelismo (fork/join) sólo por los
+ * lados; el resto de figuras admiten los cuatro.
+ */
+export function nodeSides(node) {
+  if (!node) return SIDES;
+  if (node.type === 'tiempo') return ['top', 'bottom'];
+  if (node.type === 'fork' || node.type === 'join') return ['left', 'right'];
+  return SIDES;
+}
+
 /** Eje de reparto de un lado: arriba/abajo reparten en X, izquierda/derecha en Y. */
 const sideAxis = (side) => (side === 'top' || side === 'bottom' ? 'x' : 'y');
 
@@ -66,6 +93,8 @@ function nodeOf(d, id) {
  * hace clic en el cuerpo del nodo): el lado definitivo es el que él elija.
  */
 export function sideNear(node, p) {
+  if (node.type === 'tiempo') return p.y - centerY(node) > 0 ? 'bottom' : 'top';
+  if (node.type === 'fork' || node.type === 'join') return p.x - centerX(node) > 0 ? 'right' : 'left';
   const dx = (p.x - centerX(node)) / (node.w / 2 || 1);
   const dy = (p.y - centerY(node)) / (node.h / 2 || 1);
   if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left';
@@ -117,8 +146,21 @@ export function anchorFor(d, edge, side, out) {
 
 /** Lados de salida y entrada de un flujo: los que fijó el usuario. */
 export function pickSides(d, edge) {
-  if (!nodeOf(d, edge.from) || !nodeOf(d, edge.to)) return null;
-  return fallbackSides(edge);
+  const from = nodeOf(d, edge.from);
+  const to = nodeOf(d, edge.to);
+  if (!from || !to) return null;
+  const s = fallbackSides(edge);
+  return { from: clampSide(from, s.from), to: clampSide(to, s.to) };
+}
+
+/**
+ * Ajusta un lado guardado a los que admite el nodo: si el reloj de arena tiene
+ * un flujo antiguo que sale por un lado, se recoloca arriba o abajo.
+ */
+function clampSide(node, side) {
+  const validos = nodeSides(node);
+  if (validos.includes(side)) return side;
+  return side === 'right' || side === 'bottom' ? validos[validos.length - 1] : validos[0];
 }
 
 /**

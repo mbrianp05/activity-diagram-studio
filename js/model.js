@@ -24,6 +24,12 @@ export function dotMax(type) {
   return type === 'stop' ? DOT_MAX_STOP : DOT_MAX;
 }
 
+/**
+ * Margen que se deja arriba y abajo dentro de un carril: los nodos no quedan
+ * pegados al borde ni al asidero de la cabecera.
+ */
+export const LANE_PAD = 12;
+
 export const NODE_TYPES = {
   // Nodo inicial: círculo relleno.
   start: { label: 'Inicio', shape: 'initial', w: 20, h: 20, minW: 12, minH: 12, terminal: true },
@@ -38,13 +44,14 @@ export const NODE_TYPES = {
   // (una barra y sus tres púas hacia abajo) en la esquina inferior derecha.
   proceso: { label: 'Proceso', shape: 'process', w: 176, h: 64, minW: 100, minH: 44 },
   // Tiempo: la figura es el propio reloj de arena (dos barras horizontales y la
-  // cruz de las diagonales). No cabe texto dentro, así que el nombre va al lado.
-  tiempo: { label: 'Tiempo', shape: 'time', w: 120, h: 88, minW: 72, minH: 56 },
+  // cruz de las diagonales). Es cuadrado y algo más pequeño que una actividad
+  // (176x64); no cabe texto dentro, así que va sin nombre.
+  tiempo: { label: 'Tiempo', shape: 'time', w: 56, h: 56, minW: 40, minH: 40 },
   // Enviar notificación: caja de esquinas rectas que acaba en un pico hacia
   // fuera por la derecha.
   enviar: { label: 'Enviar notificación', shape: 'send', w: 176, h: 64, minW: 110, minH: 44 },
-  // Recibir notificación: la misma caja, con el pico metido hacia dentro por
-  // la izquierda (muesca).
+  // Recibir notificación: la misma caja, con una muesca triangular hacia
+  // dentro por la izquierda.
   recibir: { label: 'Recibir notificación', shape: 'receive', w: 176, h: 64, minW: 110, minH: 44 },
   // Objeto: caja de esquinas rectas con nombre y, opcionalmente, un estado
   // entre << >> debajo. Admite cualquier número de entradas y salidas.
@@ -63,12 +70,21 @@ export function uid(prefix = 'n') {
   return `${prefix}${Date.now().toString(36).slice(-4)}${counter.toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 }
 
+/**
+ * Texto por defecto de un nodo nuevo. Las barras de paralelismo (fork/join) no
+ * llevan etiqueta: su forma ya dice si dividen o sincronizan el flujo.
+ */
+export function defaultLabel(type) {
+  return type === 'fork' || type === 'join' ? '' : (NODE_TYPES[type]?.label ?? '');
+}
+
 export function createNode(type, x, y, patch = {}) {
   const t = NODE_TYPES[type] || NODE_TYPES.activity;
   let w = patch.w ?? t.w;
   let h = patch.h ?? t.h;
-  if (type === 'decision') {
-    // Mantener siempre un cuadrado perfecto (puntas verticales).
+  if (type === 'decision' || type === 'tiempo') {
+    // Mantener siempre un cuadrado perfecto (la decisión con puntas verticales,
+    // el reloj de arena con sus barras horizontales).
     const s = Math.max(w, h, t.minW, t.minH);
     w = s; h = s;
   }
@@ -87,7 +103,7 @@ export function createNode(type, x, y, patch = {}) {
     y: Math.round(y - h / 2),
     w,
     h,
-    label: rest.label ?? t.label,
+    label: rest.label ?? defaultLabel(type),
     note: '',
     lane: null,
     ...rest,
@@ -179,6 +195,10 @@ export function sampleDiagram() {
     e(byLabel('Notificar falta'), byLabel('Pedido rechazado')),
   ];
 
+  // El fork y el join se dibujan sin texto (fueron sólo el asidero para montar
+  // los flujos): una barra de paralelismo no necesita nombre.
+  for (const n of nodes) if (n.type === 'fork' || n.type === 'join') n.label = '';
+
   const d = createDiagram({ name: 'Pedido de producto', lanes, nodes, edges });
   assignLanes(d);
   return d;
@@ -234,6 +254,21 @@ export function laneIndexAt(d, y) {
 export function assignLanes(d) {
   if (!d.lanes.length) return;
   for (const n of d.nodes) n.lane = laneIndexAt(d, n.y + n.h / 2);
+}
+
+/**
+ * Altura mínima de un carril: la banda no puede quedar más baja que el nodo
+ * más alto que contiene (más un margen para que no quede pegado al borde).
+ * Es lo que evita que al encoger el carril sus nodos se salgan de la banda.
+ * @param index carril a medir
+ * @param min por debajo de este valor nunca se encoge
+ */
+export function laneMinHeight(d, index, min = 80) {
+  if (index < 0 || index >= d.lanes.length) return min;
+  const lane = d.lanes[index];
+  let alto = 0;
+  for (const n of d.nodes) if (n.lane === index) alto = Math.max(alto, n.h);
+  return Math.max(min, alto + LANE_PAD * 2);
 }
 
 /**
@@ -511,8 +546,9 @@ export function deserialize(text) {
     const t = NODE_TYPES[n.type];
     let w = Math.max(t.minW, Number(n.w) || t.w);
     let h = Math.max(t.minH, Number(n.h) || t.h);
-    if (n.type === 'decision') {
-      // Migrar diagramas antiguos: forzar cuadrado con puntas verticales.
+    if (n.type === 'decision' || n.type === 'tiempo') {
+      // Migrar diagramas antiguos: forzar cuadrado (puntas verticales en la
+      // decisión, reloj de arena cuadrado).
       const s = Math.max(w, h);
       w = s; h = s;
     }
@@ -534,7 +570,7 @@ export function deserialize(text) {
       y: Number(n.y) || 0,
       w,
       h,
-      label: typeof n.label === 'string' ? n.label : t.label,
+      label: typeof n.label === 'string' ? n.label : defaultLabel(n.type),
       note: typeof n.note === 'string' ? n.note : '',
       lane: Number.isInteger(n.lane) ? n.lane : null,
     };

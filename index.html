@@ -95,22 +95,22 @@
             <svg viewBox="0 0 44 28">
               <rect x="2" y="3" width="40" height="22" rx="3" />
             </svg></button></li>
-        <li><button class="tool" data-tool="proceso" data-shape="process" title="Proceso: acción con tridente" aria-label="Proceso">
+        <li><button class="tool" data-tool="proceso" data-shape="process" title="Proceso" aria-label="Proceso">
             <svg viewBox="0 0 44 28">
               <rect x="2" y="3" width="40" height="22" rx="3" />
-              <path d="M30 17h12M30 17v6M36 17v6M42 17v6" />
+              <path d="M15 11h14M15 11v9M22 11v9M29 11v9" />
             </svg></button></li>
-        <li><button class="tool" data-tool="enviar" data-shape="send" title="Enviar notificación (flecha hacia fuera)"
+        <li><button class="tool" data-tool="enviar" data-shape="send" title="Enviar notificación"
             aria-label="Enviar notificación">
             <svg viewBox="0 0 44 28">
               <path d="M2 3h30l10 11-10 11H2z" />
             </svg></button></li>
-        <li><button class="tool" data-tool="recibir" data-shape="receive" title="Recibir notificación (muesca hacia dentro)"
-            aria-label="Recibir notificación">
+        <li><button class="tool" data-tool="recibir" data-shape="receive"
+            title="Recibir notificación (muesca hacia dentro)" aria-label="Recibir notificación">
             <svg viewBox="0 0 44 28">
-              <path d="M14 3h28v22H14L2 14z" />
+              <path d="M2 3h40v22H2l12-11z" />
             </svg></button></li>
-        <li><button class="tool" data-tool="tiempo" data-shape="time" title="Tiempo: reloj de arena" aria-label="Tiempo">
+        <li><button class="tool" data-tool="tiempo" data-shape="time" title="Tiempo" aria-label="Tiempo">
             <svg viewBox="0 0 44 32">
               <path d="M4 3h36L22 16l18 13H4l18-13z" />
             </svg></button></li>
@@ -118,13 +118,8 @@
             <svg viewBox="0 0 44 32">
               <path d="M22 2 42 16 22 30 2 16z" />
             </svg></button></li>
-        <li><button class="tool" data-tool="fork" data-shape="bar" title="Paralelo: divide el flujo (F)"
-            aria-label="Fork">
-            <svg viewBox="0 0 24 32">
-              <rect x="9" y="2" width="6" height="28" />
-            </svg></button></li>
-        <li><button class="tool" data-tool="join" data-shape="bar" title="Paralelo: sincroniza el flujo (J)"
-            aria-label="Join">
+        <li><button class="tool" data-tool="fork" data-shape="bar" title="Sincronización/Paralelo(F/J)"
+            aria-label="Paralelo">
             <svg viewBox="0 0 24 32">
               <rect x="9" y="2" width="6" height="28" />
             </svg></button></li>
@@ -132,29 +127,15 @@
             <svg viewBox="0 0 44 28">
               <path d="M2 3h40v16H18l-6 6v-6H2z" />
             </svg></button></li>
-        <li><button class="tool" data-tool="objeto" data-shape="object"
-            title="Objeto, con estado opcional entre &lt;&lt; &gt;&gt; (O)" aria-label="Objeto">
+        <li><button class="tool" data-tool="objeto" data-shape="object" title="Objeto (O)" aria-label="Objeto">
             <svg viewBox="0 0 44 32">
               <rect x="2" y="3" width="40" height="26" rx="0" />
             </svg></button></li>
-        <li><button class="tool" data-tool="connect" data-shape="arrow"
-            title="Conectar dos nodos (C): arrastra desde una bolita hasta otra; clic derecho para poner puntos de giro"
+        <li><button class="tool" data-tool="connect" data-shape="arrow" title="Conectar dos nodos (C)"
             aria-label="Conectar">
             <svg viewBox="0 0 44 24">
               <path d="M4 12h30" />
               <path d="M28 6l8 6-8 6" />
-            </svg></button></li>
-        <li><button class="tool" data-tool="route" data-shape="route"
-            title="Recorrido del flujo (T): clic en la flecha para añadir un giro, arrastra los puntos, clic derecho para quitar uno"
-            aria-label="Recorrido">
-            <svg viewBox="0 0 44 24">
-              <path d="M5 18V8h14v10h20" />
-              <circle cx="19" cy="8" r="2.6" />
-              <circle cx="19" cy="18" r="2.6" />
-            </svg></button></li>
-        <li><button class="tool" data-tool="delete" data-shape="trash" title="Eliminar (X)" aria-label="Eliminar">
-            <svg viewBox="0 0 24 24">
-              <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" />
             </svg></button></li>
       </ul>
 

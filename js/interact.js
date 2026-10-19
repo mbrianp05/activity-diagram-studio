@@ -20,6 +20,7 @@ import {
   readWay,
   cloneDiagram,
   dotMax,
+  laneMinHeight,
 } from "./model.js";
 import {
   edgeGeometry,
@@ -167,6 +168,13 @@ export class Interaction {
       this.removeRoutePoint(Number(puntoCtrl));
       return;
     }
+    // El asidero del carril manda sobre el paneo: si el clic se lo come el
+    // arrastre del lienzo, el carril no cambia de alto hasta el siguiente clic.
+    if (target.dataset && target.dataset.laneResize !== undefined) {
+      e.preventDefault();
+      this.beginLaneResize(e, this.toWorld(e.clientX, e.clientY), Number(target.dataset.laneResize));
+      return;
+    }
     if (e.button === 1 || e.button === 2 || this.spaceDown) {
       // Botón central o derecho: desplazar el lienzo en horizontal y vertical.
       e.preventDefault();
@@ -234,10 +242,6 @@ export class Interaction {
     // Cabecera de carril
     if (target.dataset && target.dataset.laneTitle !== undefined) {
       this.app.editLaneName(Number(target.dataset.laneTitle));
-      return;
-    }
-    if (target.dataset && target.dataset.laneResize !== undefined) {
-      this.beginLaneResize(e, w, Number(target.dataset.laneResize));
       return;
     }
     // Etiqueta de flujo: un clic sólo selecciona (el doble clic la edita).
@@ -450,12 +454,13 @@ export class Interaction {
   beginLaneResize(e, w, index) {
     const lane = this.app.diagram.lanes[index];
     if (!lane) return;
-    this.app.pushHistory("Redimensionar carril");
+    // Un clic que no llega a mover nada no debe dejar un paso en el historial.
     this.drag = {
       kind: "lane",
       lane,
       index,
       h0: lane.height,
+      min: laneMinHeight(this.app.diagram, index),
       start: w,
       moved: false,
     };
@@ -834,8 +839,10 @@ export class Interaction {
 
     if (d.kind === "resize") {
       const t = NODE_TYPES[d.node.type];
+      const barra = d.node.type === "fork" || d.node.type === "join";
       const cuadrado =
         d.node.type === "decision" ||
+        d.node.type === "tiempo" ||
         d.node.type === "start" ||
         d.node.type === "end" ||
         d.node.type === "stop";
@@ -845,6 +852,7 @@ export class Interaction {
       let nh = d.free
         ? d.h0 + (w.y - d.start.y)
         : Math.round((d.h0 + (w.y - d.start.y)) / GRID) * GRID;
+      if (barra) nw = d.w0;
       if (d.free) {
         // Alt: sin ajuste de tamaño, la caja sale tal cual.
       } else {
@@ -854,20 +862,24 @@ export class Interaction {
         const res = snapSize(this.app.diagram.nodes, d.node, nw, nh, {
           tol: GUIDE_PX / (this.app.diagram.view.k || 1),
         });
-        nw = res.w;
+        nw = barra ? d.w0 : res.w;
         nh = cuadrado ? res.w : res.h;
       }
       if (cuadrado) {
-        // Decisión: cuadrado de puntas verticales. Inicio/fin/punto muerto:
+        // Decisión y reloj de arena: cuadrados. Inicio/fin/punto muerto:
         // círculos (los pequeños, los dos últimos, con tope en su DOT_MAX, que
         // en el punto muerto es 1.5 veces mayor).
         const base = Math.max(t.minW, t.minH, nw, nh);
         const s =
-          d.node.type === "decision"
+          d.node.type === "decision" || d.node.type === "tiempo"
             ? base
             : Math.min(dotMax(d.node.type), base);
         d.node.w = s;
         d.node.h = s;
+      } else if (barra) {
+        // La barra de paralelismo sólo crece a lo alto: el ancho es fijo.
+        d.node.w = d.w0;
+        d.node.h = Math.max(t.minH, nh);
       } else {
         d.node.w = Math.max(t.minW, nw);
         d.node.h = Math.max(t.minH, nh);
@@ -877,11 +889,17 @@ export class Interaction {
     }
 
     if (d.kind === "lane") {
-      const next = Math.max(80, Math.round((d.h0 + (w.y - d.start.y)) / 4) * 4);
+      const raw = Math.round((d.h0 + (w.y - d.start.y)) / 4) * 4;
+      // El carril no baja de lo que necesitan sus nodos: si se encoge de más,
+      // se quedaría más estrecho que ellos y se saldrían de la banda.
+      const next = Math.max(d.min, raw);
       const delta = next - d.lane.height;
       if (delta) {
+        if (!d.moved) this.app.pushHistory("Redimensionar carril");
+        d.moved = true;
         d.lane.height = next;
-        // Los nodos siguen en su carril: los de abajo se desplazan con la banda.
+        // Los nodos de los carriles posteriores viajan con su banda, así que
+        // un carril intermedio también los mueve arriba o abajo.
         shiftLanes(this.app.diagram, d.index, delta);
       }
       this.app.refresh();
@@ -1143,8 +1161,9 @@ export class Interaction {
     const n = nodeById(this.app.diagram, sel[0].id);
     if (!n) return;
     const size = 9 / this.app.diagram.view.k;
+    const barra = n.type === "fork" || n.type === "join";
     this.resizeHandle = svgEl("rect", {
-      x: n.x + n.w - size / 2,
+      x: barra ? n.x + n.w / 2 - size / 2 : n.x + n.w - size / 2,
       y: n.y + n.h - size / 2,
       width: size,
       height: size,
@@ -1153,7 +1172,7 @@ export class Interaction {
       "stroke-width": 1,
       rx: 1,
       "data-resize": "1",
-      style: "cursor: nwse-resize",
+      style: `cursor: ${barra ? "ns-resize" : "nwse-resize"}`,
     });
     this.overlay.appendChild(this.resizeHandle);
   }

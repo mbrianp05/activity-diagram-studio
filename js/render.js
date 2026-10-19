@@ -3,7 +3,7 @@
  * y expone un render "suave" para el arrastre (actualiza sólo atributos).
  */
 import {
-  edgePath, edgeGeometry, anchors, anchorFor, pickSides, SIDES, END_RING_GAP, labelSpot,
+  edgePath, edgeGeometry, anchors, anchorFor, pickSides, nodeSides, END_RING_GAP, labelSpot,
 } from './routing.js';
 import { laneTop, NODE_TYPES, nodeById } from './model.js';
 
@@ -89,10 +89,10 @@ export function enviarPoints(x, y, w, h) {
   return `${x},${y} ${x + w - p},${y} ${x + w},${y + h / 2} ${x + w - p},${y + h} ${x},${y + h}`;
 }
 
-/** Recibir notificación: el pico entra hacia dentro por la izquierda. */
+/** Recibir notificación: la muesca triangular entra hacia dentro por la izquierda. */
 export function recibirPoints(x, y, w, h) {
   const p = Math.min(PICO, w * 0.3);
-  return `${x + p},${y} ${x + w},${y} ${x + w},${y + h} ${x + p},${y + h} ${x},${y + h / 2}`;
+  return `${x},${y} ${x + w},${y} ${x + w},${y + h} ${x},${y + h} ${x + p},${y + h / 2}`;
 }
 
 /** Nota: rectángulo con la esquina superior derecha doblada. */
@@ -228,9 +228,11 @@ export class Renderer {
     const usados = this.ports?.get(node.id);
     const libres = handlePositions(node);
     const out = [];
-    for (const side of SIDES) {
+    for (const side of nodeSides(node)) {
       const lista = usados?.get(side);
-      const puntos = lista && lista.length ? lista : [{ ...libres[side], used: false }];
+      const libre = libres[side];
+      if (!libre && !lista) continue;
+      const puntos = lista && lista.length ? lista : [{ ...libre, used: false }];
       for (const p of puntos) out.push({ side, ...p });
     }
     return out;
@@ -239,6 +241,8 @@ export class Renderer {
   renderLanes(d, state) {
     const layer = this.layerLanes;
     layer.textContent = '';
+    // Firma de lo dibujado: `refresh` la usa para saber si tiene que repintar.
+    this.laneFirma = `${d.lanes.map((l) => `${l.id}:${l.height}`).join('|')}#${state.selectedLane}`;
     if (!d.lanes.length) return;
     const cx = LANE_HEADER / 2;
     let y = 0;
@@ -401,33 +405,38 @@ export class Renderer {
     labels.textContent = '';
     const cx = node.x + node.w / 2;
     const cy = node.y + node.h / 2;
-    if (node.type === 'start' || node.type === 'end' || node.type === 'stop') {
-      // Los nodos inicial/final/punto muerto no llevan texto (notación UML).
-    } else if (node.type === 'fork' || node.type === 'join' || node.type === 'tiempo') {
-      // Barras y reloj de arena: el nombre va fuera de la figura (el reloj de
-      // arena no tiene hueco dentro).
-      const vertical = node.type !== 'tiempo' && node.h > node.w;
-      const t1 = el('text', { class: 'node-label', 'font-size': 11.5 }, labels);
-      t1.textContent = node.label;
-      if (vertical) {
-        t1.setAttribute('transform', `rotate(-90 ${cx} ${cy})`);
-        t1.setAttribute('x', cx);
-        t1.setAttribute('y', cy - node.h / 2 - 12);
-      } else {
-        t1.setAttribute('x', node.x + node.w + 10);
-        t1.setAttribute('y', cy);
-        t1.setAttribute('text-anchor', 'start');
-      }
-      const sub = el('text', { class: 'node-sub', 'font-size': 10.5 }, labels);
-      sub.textContent = node.note || '';
-      if (vertical) {
-        sub.setAttribute('transform', `rotate(-90 ${cx} ${cy})`);
-        sub.setAttribute('x', cx);
-        sub.setAttribute('y', cy - node.h / 2 - 26);
-      } else {
-        sub.setAttribute('x', node.x + node.w + 10);
-        sub.setAttribute('y', cy + 14);
-        sub.setAttribute('text-anchor', 'start');
+    if (node.type === 'start' || node.type === 'end' || node.type === 'stop' || node.type === 'tiempo') {
+      // Inicio, fin, punto muerto y reloj de arena no llevan texto (la figura del
+      // tiempo es el propio reloj de arena, sin hueco dentro).
+    } else if (node.type === 'fork' || node.type === 'join') {
+      // Barras de paralelismo: sin nombre no se dibuja nada (es lo habitual); si
+      // el usuario le pone uno, va fuera, girado cuando la barra está de pie.
+      const vertical = node.h > node.w;
+      const t1 = node.label || node.note
+        ? el('text', { class: 'node-label', 'font-size': 11.5 }, labels)
+        : null;
+      if (t1) {
+        t1.textContent = node.label;
+        if (vertical) {
+          t1.setAttribute('transform', `rotate(-90 ${cx} ${cy})`);
+          t1.setAttribute('x', cx);
+          t1.setAttribute('y', cy - node.h / 2 - 12);
+        } else {
+          t1.setAttribute('x', node.x + node.w + 10);
+          t1.setAttribute('y', cy);
+          t1.setAttribute('text-anchor', 'start');
+        }
+        const sub = el('text', { class: 'node-sub', 'font-size': 10.5 }, labels);
+        sub.textContent = node.note || '';
+        if (vertical) {
+          sub.setAttribute('transform', `rotate(-90 ${cx} ${cy})`);
+          sub.setAttribute('x', cx);
+          sub.setAttribute('y', cy - node.h / 2 - 26);
+        } else {
+          sub.setAttribute('x', node.x + node.w + 10);
+          sub.setAttribute('y', cy + 14);
+          sub.setAttribute('text-anchor', 'start');
+        }
       }
     } else {
       const isDiamond = node.type === 'decision';
@@ -456,9 +465,11 @@ export class Renderer {
     if (!state.simulating) {
       const usados = this.ports?.get(node.id);
       const libres = handlePositions(node);
-      for (const side of SIDES) {
+      for (const side of nodeSides(node)) {
         const lista = usados?.get(side);
-        const puntos = lista && lista.length ? lista : [{ ...libres[side], used: false }];
+        const libre = libres[side];
+        if (!libre && !lista) continue;
+        const puntos = lista && lista.length ? lista : [{ ...libre, used: false }];
         for (const p of puntos) {
           const h = el('circle', {
             class: `handle${p.used ? ' used' : ''}`, cx: p.x, cy: p.y, r: 6,
@@ -542,9 +553,15 @@ export class Renderer {
     return { g, hit, path, labelGroup, open, close, text };
   }
 
-  /** Actualización ligera durante el arrastre de nodos. */
-  refresh(d, state) {
+  /**
+ * Actualización ligera durante el arrastre. Las bandas de carril también se
+ * repintan (sólo si ha cambiado alguna medida): al redimensionar un carril el
+ * alto tiene que verse mientras se mueve el ratón, no sólo al soltar.
+ */
+refresh(d, state) {
     this.ports = buildPorts(d);
+    const firma = `${d.lanes.map((l) => `${l.id}:${l.height}`).join('|')}#${state.selectedLane}`;
+    if (firma !== this.laneFirma) this.renderLanes(d, state);
     this.renderEdges(d, state);
     this.renderNodes(d, state);
   }
