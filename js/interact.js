@@ -510,7 +510,10 @@ export class Interaction {
     this.overlay.appendChild(this.tempEdge);
     this.app.select({ type: "node", id: from });
     this.app.status(
-      `Sale por ${labelSide(side)} · mueve el cursor para guiar la flecha · clic derecho para un punto de giro · clic en la bolita del destino`,
+      `Sale por ${labelSide(side)} · mueve el cursor para guiar la flecha · clic para cambiar de dirección · Esc para cancelar`,
+    );
+    this.app.toast(
+      "Trazando la flecha: un clic cambia la dirección; clic en la bolita del destino para cerrarla y Esc para cancelar.",
     );
     this.drawRouteHandles();
   }
