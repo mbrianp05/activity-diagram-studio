@@ -19,6 +19,9 @@ import { createSim, start as simStart, step as simStep, simView, cloneSim, evalu
 import { download, exportSvg, exportPng } from './io.js';
 
 const STORAGE_KEY = 'activity-diagram-studio/v1';
+// La vista (zoom y paneo) se guarda aparte: `serialize()` la excluye a propósito
+// para que los archivos exportados no arrastren la cámara del editor.
+const VIEW_KEY = 'activity-diagram-studio/view';
 
 /** Herramientas que no son tipos de nodo (para los rótulos de la barra). */
 const EXTRA_TOOLS = { connect: 'Conectar', route: 'Recorrido', delete: 'Eliminar' };
@@ -50,6 +53,8 @@ class App {
   constructor() {
     this.svg = document.getElementById('canvas');
     this.diagram = loadInitial();
+    const savedView = loadSavedView();
+    if (savedView) this.diagram.view = savedView;
     this.state = { selected: [], errorNodes: new Set(), selectedLane: null };
     this.tool = 'select';
     this.snapToGrid = true;
@@ -68,7 +73,9 @@ class App {
     this.bindUi();
     this.applyView();
     this.render();
-    this.zoomFit();
+    // Con una vista guardada se respeta el zoom y el paneo de la sesión anterior;
+    // sólo se encuadra el diagrama cuando no hay ninguna.
+    if (!savedView) this.zoomFit();
     this.toast('Listo. Arrastra herramientas desde la paleta o pulsa una tecla.');
   }
 
@@ -162,6 +169,9 @@ class App {
   applyView() {
     this.renderer.setView(this.diagram.view);
     document.getElementById('zoom-label').textContent = `${Math.round(this.diagram.view.k * 100)}%`;
+    // Zoom y paneo también se recuerdan entre recargas (con el mismo debounce
+    // que el resto de la persistencia).
+    this.persistSoon();
   }
 
   renderCounts() {
@@ -941,6 +951,7 @@ class App {
   persist() {
     try {
       localStorage.setItem(STORAGE_KEY, serialize(this.diagram));
+      localStorage.setItem(VIEW_KEY, JSON.stringify(this.diagram.view));
     } catch { /* almacenamiento lleno o no disponible */ }
   }
 
@@ -1087,8 +1098,13 @@ class App {
     dlg.addEventListener('click', (ev) => { if (ev.target === dlg) dlg.close('cancel'); });
 
     window.addEventListener('beforeunload', (e) => {
+      // El debounce de `persistSoon` puede no haber llegado a dispararse: la
+      // vista se guarda al salir para no perder el último zoom o paneo.
+      this.persist();
       if (this.undoStack.length > 3) { e.preventDefault(); e.returnValue = ''; }
     });
+    // `pagehide` cubre la recarga en navegadores que no ejecutan `beforeunload`.
+    window.addEventListener('pagehide', () => this.persist());
 
     this.updateHistoryButtons();
     this.setTool('select');
@@ -1183,6 +1199,25 @@ function loadInitial() {
     if (raw) return deserialize(raw);
   } catch { /* ignorar */ }
   return sampleDiagram();
+}
+
+/**
+ * Vista guardada de la sesión anterior (`{x, y, k}`). Devuelve `null` si no hay
+ * nada válido, en cuyo caso el arranque encuadra el diagrama con `zoomFit()`.
+ */
+function loadSavedView() {
+  try {
+    const raw = localStorage.getItem(VIEW_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw);
+    const x = Number(v?.x);
+    const y = Number(v?.y);
+    const k = Number(v?.k);
+    if (![x, y, k].every(Number.isFinite) || k <= 0) return null;
+    return { x, y, k: Math.max(0.2, Math.min(3, k)) };
+  } catch {
+    return null;
+  }
 }
 
 void [laneIndexAt];

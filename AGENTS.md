@@ -43,6 +43,7 @@ Dependencias: `routing.js` no importa nada del DOM salvo constantes; `model.js` 
 - Durante un arrastre usa `app.refresh()`; sólo `render()` al confirmar.
 - El historial son snapshots JSON de `{name, lanes, nodes, edges}` — **excluye `view`**; `restore()` preserva el zoom/pan actual. `serialize()` también quita `view`.
 - Persistencia automática en `localStorage` con clave `activity-diagram-studio/v1` (debounced 400 ms en `persistSoon`). `loadInitial()` cae al diagrama de ejemplo si no hay nada.
+- El zoom y el paneo se guardan aparte en `activity-diagram-studio/view` (`{x, y, k}`) desde `applyView()` y al salir (`beforeunload`/`pagehide`). Al arrancar se restauran; sólo se llama a `zoomFit()` si no hay vista guardada. No metas `view` en `serialize()`: los archivos exportados no deben llevar la cámara del editor.
 - `window.app` es la instancia global; útil para depurar en consola.
 
 ## Invariantes geométricos
