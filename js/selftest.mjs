@@ -773,6 +773,7 @@ console.log('\n19. Nodo de punto muerto');
   const stop = createNode('stop', 560, 300);
   g.nodes.push(s1, a, stop);
   check('se crea cuadrado (es un círculo)', stop.w === stop.h && stop.w > 0);
+  check('es más grande que el inicio/fin', stop.w > s1.w);
   g.edges.push(createEdge(s1.id, a.id), createEdge(a.id, stop.id));
   const v = summary(validate(g));
   check('validación sin errores', v.error === 0, JSON.stringify(validate(g)));

@@ -15,7 +15,7 @@ export const DOT_MAX = 28;
  * más grande en todo su rango de tamaños (de ahí que su lado por defecto, su
  * mínimo y su máximo se deriven de los del inicio/fin en lugar de ir a mano).
  */
-export const STOP_SCALE = 1.5;
+export const STOP_SCALE = 1.75;
 /** Diámetro máximo del punto muerto. */
 export const DOT_MAX_STOP = Math.round(DOT_MAX * STOP_SCALE);
 
@@ -37,7 +37,7 @@ export const NODE_TYPES = {
   end: { label: 'Fin', shape: 'final', w: 20, h: 20, minW: 12, minH: 12, terminal: true },
   // Punto muerto: círculo con una diagonal (de abajo a arriba): el flujo se
   // detiene aquí y no continúa (una vía muerta del proceso). Es un círculo
-  // 1.5 veces mayor que el de inicio/fin (30 de lado por defecto, hasta 42).
+  // STOP_SCALE veces mayor que el de inicio/fin (35 de lado por defecto, hasta 49).
   stop: { label: 'Punto muerto', shape: 'stop', w: 20 * STOP_SCALE, h: 20 * STOP_SCALE, minW: 12 * STOP_SCALE, minH: 12 * STOP_SCALE, terminal: true },
   activity: { label: 'Actividad', shape: 'activity', w: 176, h: 64, minW: 100, minH: 44 },
   // Proceso: la misma caja redondeada que la acción, con un tridente invertido
