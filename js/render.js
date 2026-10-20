@@ -76,11 +76,11 @@ export function romboPoints(x, y, w, h) {
   return `${x + w / 2},${y} ${x + w},${y + h / 2} ${x + w / 2},${y + h} ${x},${y + h / 2}`;
 }
 
-/** Reloj de arena: barras horizontales arriba y abajo y la cruz de diagonales. */
+/** Reloj de arena girado 90°: barras verticales a los lados y la cruz de diagonales. */
 export function relojPoints(x, y, w, h) {
   const cx = x + w / 2;
   const cy = y + h / 2;
-  return `${x},${y} ${x + w},${y} ${cx},${cy} ${x + w},${y + h} ${x},${y + h} ${cx},${cy}`;
+  return `${x},${y} ${x},${y + h} ${cx},${cy} ${x + w},${y + h} ${x + w},${y} ${cx},${cy}`;
 }
 
 /** Enviar notificación: el pico sale hacia fuera por la derecha. */

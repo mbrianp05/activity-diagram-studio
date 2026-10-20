@@ -20,11 +20,11 @@ export function anchors(node) {
   const cx = node.x + node.w / 2;
   const cy = node.y + node.h / 2;
   if (node.type === 'tiempo') {
-    // El reloj de arena sólo se conecta por arriba y por abajo: es su forma la
-    // que lo pide (cruz en el centro), no admite entradas por los lados.
+    // El reloj de arena está girado 90°: sus barras planas quedan a izquierda y
+    // derecha, así que sólo se conecta por los lados.
     return {
-      top: { x: cx, y: node.y },
-      bottom: { x: cx, y: node.y + node.h },
+      left: { x: node.x, y: cy },
+      right: { x: node.x + node.w, y: cy },
     };
   }
   if (node.type === 'fork' || node.type === 'join') {
@@ -63,13 +63,12 @@ export const SIDES = ['left', 'right', 'top', 'bottom'];
 
 /**
  * Lados de conexión que admite un nodo. El reloj de arena (tiempo) sólo entra y
- * sale por arriba y por abajo; la barra de paralelismo (fork/join) sólo por los
- * lados; el resto de figuras admiten los cuatro.
+ * sale por los lados (sus barras planas); la barra de paralelismo (fork/join)
+ * también; el resto de figuras admiten los cuatro.
  */
 export function nodeSides(node) {
   if (!node) return SIDES;
-  if (node.type === 'tiempo') return ['top', 'bottom'];
-  if (node.type === 'fork' || node.type === 'join') return ['left', 'right'];
+  if (node.type === 'tiempo' || node.type === 'fork' || node.type === 'join') return ['left', 'right'];
   return SIDES;
 }
 
@@ -93,8 +92,7 @@ function nodeOf(d, id) {
  * hace clic en el cuerpo del nodo): el lado definitivo es el que él elija.
  */
 export function sideNear(node, p) {
-  if (node.type === 'tiempo') return p.y - centerY(node) > 0 ? 'bottom' : 'top';
-  if (node.type === 'fork' || node.type === 'join') return p.x - centerX(node) > 0 ? 'right' : 'left';
+  if (node.type === 'tiempo' || node.type === 'fork' || node.type === 'join') return p.x - centerX(node) > 0 ? 'right' : 'left';
   const dx = (p.x - centerX(node)) / (node.w / 2 || 1);
   const dy = (p.y - centerY(node)) / (node.h / 2 || 1);
   if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left';
@@ -155,7 +153,7 @@ export function pickSides(d, edge) {
 
 /**
  * Ajusta un lado guardado a los que admite el nodo: si el reloj de arena tiene
- * un flujo antiguo que sale por un lado, se recoloca arriba o abajo.
+ * un flujo antiguo que sale por arriba o por abajo, se recoloca a un lado.
  */
 function clampSide(node, side) {
   const validos = nodeSides(node);

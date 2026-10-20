@@ -1008,27 +1008,30 @@ console.log('\n23. Nodos de proceso, tiempo y notificación');
       p[1] === rec.y || p[1] === rec.y + rec.h || p[0] === rec.x || p[0] === rec.x + rec.w),
     JSON.stringify(pr));
 
-  // Tiempo: reloj de arena (barras arriba y abajo y la cruz en el centro).
+  // Tiempo: reloj de arena girado 90° (barras verticales a los lados y la cruz
+  // en el centro).
   const pt = shapeAttrs(tie).attrs.points.split(' ').map((p) => p.split(',').map(Number));
   const cx = tie.x + tie.w / 2;
   const cy = tie.y + tie.h / 2;
-  check('tiempo: barras horizontales arriba y abajo',
+  check('tiempo: barras verticales a izquierda y derecha',
     pt.some((p) => p[0] === tie.x && p[1] === tie.y)
+    && pt.some((p) => p[0] === tie.x && p[1] === tie.y + tie.h)
+    && pt.some((p) => p[0] === tie.x + tie.w && p[1] === tie.y)
     && pt.some((p) => p[0] === tie.x + tie.w && p[1] === tie.y + tie.h), JSON.stringify(pt));
   check('tiempo: las diagonales se cruzan en el centro',
     pt.filter((p) => p[0] === cx && p[1] === cy).length === 2, JSON.stringify(pt));
   check('tiempo: algo más pequeño que una actividad',
     tie.w < NODE_TYPES.activity.w && tie.h < NODE_TYPES.activity.h, `${tie.w}x${tie.h}`);
   check('tiempo: es cuadrado', tie.w === tie.h, `${tie.w}x${tie.h}`);
-  check('tiempo: sólo se conecta por arriba y por abajo',
-    Object.keys(anchors(tie)).join(',') === 'top,bottom'
-    && nodeSides(tie).join(',') === 'top,bottom', Object.keys(anchors(tie)).join(','));
-  check('tiempo: un flujo antiguo por el lado se recoloca arriba o abajo',
-    pickSides(g, { from: tie.id, to: fin.id, fromSide: 'right', toSide: 'left' }).from === 'bottom',
-    JSON.stringify(pickSides(g, { from: tie.id, to: fin.id, fromSide: 'right', toSide: 'left' })));
-  check('tiempo: al pulsar su cuerpo el lado es vertical',
-    sideNear(tie, { x: tie.x - 100, y: tie.y + tie.h + 100 }) === 'bottom'
-    && sideNear(tie, { x: tie.x + 300, y: tie.y - 60 }) === 'top');
+  check('tiempo: sólo se conecta por los lados',
+    Object.keys(anchors(tie)).join(',') === 'left,right'
+    && nodeSides(tie).join(',') === 'left,right', Object.keys(anchors(tie)).join(','));
+  check('tiempo: un flujo antiguo vertical se recoloca a un lado',
+    pickSides(g, { from: tie.id, to: fin.id, fromSide: 'top', toSide: 'bottom' }).from === 'left',
+    JSON.stringify(pickSides(g, { from: tie.id, to: fin.id, fromSide: 'top', toSide: 'bottom' })));
+  check('tiempo: al pulsar su cuerpo el lado es horizontal',
+    sideNear(tie, { x: tie.x - 100, y: tie.y + tie.h + 100 }) === 'left'
+    && sideNear(tie, { x: tie.x + 300, y: tie.y - 60 }) === 'right');
   const barraP = createNode('fork', 0, 0);
   check('fork/join: sólo se conectan por los lados',
     nodeSides(barraP).join(',') === 'left,right'

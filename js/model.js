@@ -43,9 +43,9 @@ export const NODE_TYPES = {
   // Proceso: la misma caja redondeada que la acción, con un tridente invertido
   // (una barra y sus tres púas hacia abajo) en la esquina inferior derecha.
   proceso: { label: 'Proceso', shape: 'process', w: 176, h: 64, minW: 100, minH: 44 },
-  // Tiempo: la figura es el propio reloj de arena (dos barras horizontales y la
-  // cruz de las diagonales). Es cuadrado y algo más pequeño que una actividad
-  // (176x64); no cabe texto dentro, así que va sin nombre.
+  // Tiempo: la figura es el propio reloj de arena girado 90° (dos barras
+  // verticales a los lados y la cruz de las diagonales). Es cuadrado y algo más
+  // pequeño que una actividad (176x64); no cabe texto dentro, así que va sin nombre.
   tiempo: { label: 'Tiempo', shape: 'time', w: 56, h: 56, minW: 40, minH: 40 },
   // Enviar notificación: caja de esquinas rectas que acaba en un pico hacia
   // fuera por la derecha.
