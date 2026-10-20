@@ -157,6 +157,7 @@ class App {
       errorNodes: this.state.errorNodes,
       simulating: this.simRunning,
     });
+    this.interaction?.drawResizeHandle();
     this.interaction?.drawRouteHandles();
     this.renderCounts();
   }
