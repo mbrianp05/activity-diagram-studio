@@ -83,6 +83,16 @@ export function relojPoints(x, y, w, h) {
   return `${x},${y} ${x},${y + h} ${cx},${cy} ${x + w},${y + h} ${x + w},${y} ${cx},${cy}`;
 }
 
+/**
+ * Reloj de arena de pie (el nodo girado 90°): las barras planas quedan arriba y
+ * abajo y la cruz de diagonales sigue cruzándose en el centro.
+ */
+export function relojPointsVertical(x, y, w, h) {
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  return `${x + w},${y} ${x},${y} ${cx},${cy} ${x},${y + h} ${x + w},${y + h} ${cx},${cy}`;
+}
+
 /** Enviar notificación: el pico sale hacia fuera por la derecha. */
 export function enviarPoints(x, y, w, h) {
   const p = Math.min(PICO, w * 0.3);
@@ -140,7 +150,11 @@ export function shapeAttrs(node) {
     case 'decision':
       return poly(romboPoints(x, y, w, h));
     case 'tiempo':
-      return poly(relojPoints(x, y, w, h), 'round');
+      // El reloj va tumbado de fábrica y de pie si el nodo está girado.
+      return poly(
+        node.rot === 90 ? relojPointsVertical(x, y, w, h) : relojPoints(x, y, w, h),
+        'round',
+      );
     case 'enviar':
       return poly(enviarPoints(x, y, w, h));
     case 'recibir':

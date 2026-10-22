@@ -7,6 +7,14 @@
  * exactamente cada flecha en su lado (centrada, o repartida si comparte lado con
  * más) y se ortogonala el recorrido en tramos rectos. No hay trazado automático.
  * Módulo autónomo (sin imports) para evitar ciclos con model.js.
+ *
+ * Dos reglas rigen siempre el trazado:
+ *  - la flecha **sale y entra perpendicular** al lado del nodo: el primer tramo
+ *    va por la normal de salida (`exitStub`) y el último por la normal de
+ *    entrada (`withEntry`);
+ *  - la flecha **no atraviesa nodos**: mientras se traza, la punta se detiene
+ *    contra la cara del nodo (`wallLimit`) y el recorrido automático elige la
+ *    forma de acercarse que no cruza ningún nodo (`obstaclesOf`).
  */
 
 const DOT_TYPES = new Set(['start', 'end', 'stop']);
@@ -19,16 +27,16 @@ const DOT_TYPES = new Set(['start', 'end', 'stop']);
 export function anchors(node) {
   const cx = node.x + node.w / 2;
   const cy = node.y + node.h / 2;
-  if (node.type === 'tiempo') {
-    // El reloj de arena está girado 90°: sus barras planas quedan a izquierda y
-    // derecha, así que sólo se conecta por los lados.
-    return {
-      left: { x: node.x, y: cy },
-      right: { x: node.x + node.w, y: cy },
-    };
-  }
-  if (node.type === 'fork' || node.type === 'join') {
-    // La barra de paralelismo sólo recibe y reparte por los lados.
+  if (node.type === 'tiempo' || node.type === 'fork' || node.type === 'join') {
+    // La barra de paralelismo y el reloj de arena sólo reciben y reparten por
+    // su cara plana, que gira con el nodo: tumbados entran por los lados y de
+    // pie por arriba y por abajo.
+    if (node.rot === 90) {
+      return {
+        top: { x: cx, y: node.y },
+        bottom: { x: cx, y: node.y + node.h },
+      };
+    }
     return {
       left: { x: node.x, y: cy },
       right: { x: node.x + node.w, y: cy },
@@ -63,12 +71,15 @@ export const SIDES = ['left', 'right', 'top', 'bottom'];
 
 /**
  * Lados de conexión que admite un nodo. El reloj de arena (tiempo) sólo entra y
- * sale por los lados (sus barras planas); la barra de paralelismo (fork/join)
- * también; el resto de figuras admiten los cuatro.
+ * sale por su cara plana (y la barra de paralelismo, fork/join, igual): tumbados
+ * por los lados y de pie por arriba y por abajo. El resto de figuras admiten los
+ * cuatro.
  */
 export function nodeSides(node) {
   if (!node) return SIDES;
-  if (node.type === 'tiempo' || node.type === 'fork' || node.type === 'join') return ['left', 'right'];
+  if (node.type === 'tiempo' || node.type === 'fork' || node.type === 'join') {
+    return node.rot === 90 ? ['top', 'bottom'] : ['left', 'right'];
+  }
   return SIDES;
 }
 
@@ -92,7 +103,11 @@ function nodeOf(d, id) {
  * hace clic en el cuerpo del nodo): el lado definitivo es el que él elija.
  */
 export function sideNear(node, p) {
-  if (node.type === 'tiempo' || node.type === 'fork' || node.type === 'join') return p.x - centerX(node) > 0 ? 'right' : 'left';
+  if (node.type === 'tiempo' || node.type === 'fork' || node.type === 'join') {
+    // Sólo tienen dos lados: el que mira al puntero en el eje de su cara plana.
+    if (node.rot === 90) return p.y - centerY(node) > 0 ? 'bottom' : 'top';
+    return p.x - centerX(node) > 0 ? 'right' : 'left';
+  }
   const dx = (p.x - centerX(node)) / (node.w / 2 || 1);
   const dy = (p.y - centerY(node)) / (node.h / 2 || 1);
   if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left';
@@ -173,6 +188,17 @@ export const END_RING_GAP = 5;
 const RING_W = 1.4;
 /** Tramo inicial perpendicular al nodo antes de girar. */
 const STUB = 24;
+/**
+ * Separación automática del primer tramo cuando el flujo discurre paralelo al
+ * lado por el que sale: evita que la flecha se dibuje pegada al borde del nodo.
+ * Es el único cambio de dirección que no marca el usuario con un clic.
+ */
+export const EXIT_GAP = STUB;
+/**
+ * Separación que se deja entre el trazo de una flecha y un nodo por el que no
+ * puede pasar: la punta se detiene contra su cara, a esta distancia.
+ */
+export const WALL_MARGIN = 6;
 /** Separación mínima entre nodos para considerar que el tramo es recto. */
 const ALIGN = 0.5;
 
@@ -200,8 +226,22 @@ export function edgeGeometry(d, edge) {
   const way = Array.isArray(edge.way)
     ? edge.way.filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y))
     : [];
-  const pts = way.length ? userRoute(p0, n0, p3, n1, way) : linkRoute(p0, n0, p3, n1);
+  // Nodos que el flujo no puede atravesar (ni el origen ni el destino: de
+  // esos sale y entra por sus lados).
+  const obst = obstaclesOf(d, edge);
+  const pts = way.length
+    ? userRoute(p0, n0, p3, n1, way, obst)
+    : linkRoute(p0, n0, p3, n1, obst);
   return { p1: p0, p2: p3, pts, mid: polyMid(pts), sides };
+}
+
+/**
+ * Nodos que un flujo no puede atravesar: todos los del diagrama menos el
+ * origen y el destino (de esos sale y entra por sus lados).
+ */
+export function obstaclesOf(d, edge) {
+  if (!d || !edge) return [];
+  return (d.nodes || []).filter((n) => n.id !== edge.from && n.id !== edge.to);
 }
 
 /* ------------------------------------------------------------------ */
@@ -212,42 +252,64 @@ export function edgeGeometry(d, edge) {
  * Recorrido con puntos de control: sale del ancla perpendicular a su lado,
  * encuadra cada tramo en un ángulo recto y entra en el destino por el lado que
  * indicó el usuario. El usuario sólo marca los puntos; aquí únicamente se
- * orthonormaliza el trazado.
+ * orthonormaliza el trazado. La salida usa el punto ya separado que guardó el
+ * preview y la llegada se construye con `withEntry` para entrar perpendicular.
  * @returns Array<{x,y>} vértices de la polilínea
  */
-export function userRoute(p0, n0, p3, n1, way) {
-  const pts = [p0, stub(p0, n0, way[0])];
-  for (const p of way) pts.push({ x: p.x, y: p.y });
-  pts.push(stub(p3, n1, way[way.length - 1]), p3);
-  return orthogonalize(pts);
+export function userRoute(p0, n0, p3, n1, way, obst = []) {
+  const body = orthogonalize([p0, exitStub(p0, n0, way[0] || p3), ...way]);
+  return withEntry(body, p3, n1, obst);
 }
 
 /**
  * Recorrido sin puntos de giro: un único corte en L entre la salida y la
- * entrada. Es la flecha «por defecto»; con el botón derecho el usuario va
- * añadiendo giros hasta dejar el recorrido como quiere.
+ * entrada. Es la flecha «por defecto»; si sale en paralelo al lado de un nodo,
+ * el tramo se separa EXIT_GAP para no dibujarse encima del borde, y la llegada
+ * siempre entra perpendicular (`withEntry`).
  */
-export function linkRoute(p0, n0, p3, n1) {
-  return orthogonalize([p0, stub(p0, n0, p3), stub(p3, n1, p0), p3]);
+export function linkRoute(p0, n0, p3, n1, obst = []) {
+  const body = orthogonalize([p0, exitStub(p0, n0, p3)]);
+  return withEntry(body, p3, n1, obst);
 }
 
 /**
  * Trozo visible mientras se traza: desde el ancla de salida, pasando por los
- * puntos de giro ya fijados y terminando en `cola`, que son los dos últimos
- * puntos del trazo: la proyección del puntero sobre la línea en la que se está
- * (`guidePoint`) y el puntero. Entre ambos se cuela **un** cambio de dirección
- * automático, que es lo que permite que, después de un giro, la flecha siga
- * recta y luego se desvíe hacia donde está el cursor sin tener que volver a
- * clicar. Más de uno no: `orthogonalize` mete como mucho un codo por tramo, así
- * que a partir del primero el último lado sólo se estira.
+ * puntos de giro ya fijados y terminando en `cola`. `cola` es el punto guiado
+ * por el cursor (`guidePoint`/`exitGuide`); no se añade ningún codo automático
+ * hacia el puntero: cada cambio de dirección lo fija el usuario con un clic.
  */
 export function userRouteTip(p0, n0, way, cola) {
   const fin = (Array.isArray(cola) ? cola : [cola]).filter(Boolean);
   const objetivo = way[0] || fin[0] || p0;
-  const pts = [p0, stub(p0, n0, objetivo)];
+  const pts = [p0, exitStub(p0, n0, objetivo)];
   for (const p of way) pts.push({ x: p.x, y: p.y });
   for (const p of fin) pts.push({ x: p.x, y: p.y });
   return orthogonalize(pts);
+}
+
+/**
+ * Punto de arranque del recorrido: el primer tramo va por la normal del lado
+ * por el que sale la flecha, así que **sale perpendicular** aunque el primer
+ * punto de giro caiga en paralelo al borde del nodo.
+ *
+ * - Si el destino está en esa línea (a lo largo de la normal) se va recto
+ *   hasta él, sin salirse del nodo.
+ * - Si el destino se queda a un lado, la flecha se separa EXIT_GAP del borde
+ *   antes de girar (y nunca sale hacia dentro del nodo).
+ *
+ * @param p ancla de salida
+ * @param n normal del lado de salida
+ * @param target primer punto hacia el que va el recorrido
+ */
+export function exitStub(p, n, target) {
+  const dx = target.x - p.x;
+  const dy = target.y - p.y;
+  const d = dx * n.x + dy * n.y;               // distancia por la normal
+  const lado = Math.abs(dx * n.y + dy * n.x);  // distancia a lo largo del lado
+  const largo = lado <= ALIGN
+    ? Math.max(0, Math.min(EXIT_GAP, d))
+    : (d > 0 ? Math.min(EXIT_GAP, d) : EXIT_GAP);
+  return { x: p.x + n.x * largo, y: p.y + n.y * largo };
 }
 
 /**
@@ -257,20 +319,82 @@ export function userRouteTip(p0, n0, way, cola) {
  * no parpadee al mover el ratón en diagonal.
  */
 export function guidePoint(from, cursor, axis = null) {
+  const ax = guideAxis(from, cursor, axis);
+  return ax === 'x' ? { x: cursor.x, y: from.y } : { x: from.x, y: cursor.y };
+}
+
+/**
+ * Eje en el que se mueve el trazo. El eje elegido sólo cambia cuando el cursor
+ * se va claramente por el otro, para que la línea no parpadee al mover el ratón
+ * en diagonal. Se devuelve aparte porque el caller necesita recordarlo: si la
+ * punta se para contra un nodo, el eje no debe cambiar por eso.
+ */
+export function guideAxis(from, cursor, axis = null) {
   const dx = Math.abs(cursor.x - from.x);
   const dy = Math.abs(cursor.y - from.y);
   let ax = axis;
   if (!ax || (dx <= ALIGN && dy <= ALIGN)) ax = dx >= dy ? 'x' : 'y';
   else if (ax === 'x' && dy > dx) ax = 'y';
   else if (ax === 'y' && dx > dy) ax = 'x';
-  return ax === 'x' ? { x: cursor.x, y: from.y } : { x: from.x, y: cursor.y };
+  return ax;
 }
 
-/** Primer punto del recorrido a STUB del ancla, sin pasarse del objetivo. */
-function stub(p, n, target) {
-  const t = n.x !== 0 ? (target.x - p.x) * n.x : (target.y - p.y) * n.y;
-  const d = Math.max(0, Math.min(STUB, t));
-  return { x: p.x + n.x * d, y: p.y + n.y * d };
+/**
+ * Punto guía del primer tramo: si el eje elegido corre paralelo al lado de
+ * salida, se separa EXIT_GAP del nodo para que la flecha no se dibuje sobre el
+ * borde; si no, pasa por la proyección del puntero. Es una de las dos
+ * desviaciones automáticas; la otra es la llegada perpendicular (`withEntry`).
+ * El resto de cambios de dirección los fija el usuario al clicar.
+ */
+export function exitGuide(p0, n0, axis, cursor) {
+  const d = saleParalelo(n0, axis) ? EXIT_GAP : 0;
+  const tip = axis === 'x'
+    ? { x: cursor.x, y: p0.y + n0.y * d }
+    : { x: p0.x + n0.x * d, y: cursor.y };
+  return haciaFuera(tip, p0, n0);
+}
+
+/** ¿Va el punto hacia delante (por la normal) o hacia dentro del nodo? */
+function haciaFuera(p, base, n) {
+  const d = (p.x - base.x) * n.x + (p.y - base.y) * n.y;
+  return d >= 0 ? p : { x: base.x, y: base.y };
+}
+
+/** ¿El eje del primer tramo discurre paralelo al lado de salida? */
+function saleParalelo(n, axis) {
+  return n.x !== 0 ? axis === 'y' : axis === 'x';
+}
+
+/**
+ * Cola de llegada: obliga a entrar perpendicular al lado del nodo destino. Se
+ * pasa por un punto a EXIT_GAP del borde sobre la normal y desde ahí se entra
+ * recto; el codo previo se coloca en la misma línea de separación para que el
+ * último tramo nunca discurra pegado al borde. Si el recorrido ya venía por esa
+ * normal, los puntos intermedios desaparecen al limpiar los colineales.
+ * @param variante 'a' llega en horizontal primero; 'b', en vertical primero.
+ */
+function entryTail(prev, p3, n, variante) {
+  const s = { x: p3.x + n.x * EXIT_GAP, y: p3.y + n.y * EXIT_GAP };
+  const c = variante === 'b'
+    ? (n.x !== 0 ? { x: prev.x, y: s.y } : { x: s.x, y: prev.y })
+    : (n.x !== 0 ? { x: s.x, y: prev.y } : { x: prev.x, y: s.y });
+  return [c, s, { x: p3.x, y: p3.y }];
+}
+
+/**
+ * Añade la cola de llegada al cuerpo ya ortogonal y limpia los colineales.
+ * La llegada es siempre perpendicular al lado del destino. Si con esa forma de
+ * acercarse el recorrido cruza algún nodo, se prueba la otra (vertical primero
+ * en vez de horizontal) y se queda con la que no lo cruza.
+ */
+function withEntry(body, p3, n, obst = []) {
+  const prev = body[body.length - 1] || p3;
+  const a = dedupe([...body, ...entryTail(prev, p3, n, 'a')]);
+  if (!obst || !obst.length) return a;
+  const b = dedupe([...body, ...entryTail(prev, p3, n, 'b')]);
+  if (!cruzaNodos(a, obst)) return a;
+  if (!cruzaNodos(b, obst)) return b;
+  return a;
 }
 
 /** Convierte una lista de puntos libres en vértices ortogonales (un codo por tramo). */
@@ -293,6 +417,132 @@ function orthogonalize(pts) {
     out.push(b);
   }
   return dedupe(out);
+}
+
+/* ------------------------------------------------------------------ */
+/* Los nodos que el trazo no puede atravesar                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * ¿El tramo entre `a` y `b` atraviesa el rectángulo `r`? Los tramos del
+ * trazado son ortogonales, así que basta con mirar en qué eje se mueven y el
+ * recorrido en el otro.
+ */
+export function segmentCrosses(a, b, r, margen = WALL_MARGIN) {
+  if (!a || !b || !r) return false;
+  const x1 = Math.min(a.x, b.x);
+  const x2 = Math.max(a.x, b.x);
+  const y1 = Math.min(a.y, b.y);
+  const y2 = Math.max(a.y, b.y);
+  if (Math.abs(a.y - b.y) <= ALIGN) {
+    // Tramo horizontal.
+    if (a.y <= r.y - margen || a.y >= r.y + r.h + margen) return false;
+    return x2 > r.x - margen && x1 < r.x + r.w + margen;
+  }
+  if (Math.abs(a.x - b.x) <= ALIGN) {
+    // Tramo vertical.
+    if (a.x <= r.x - margen || a.x >= r.x + r.w + margen) return false;
+    return y2 > r.y - margen && y1 < r.y + r.h + margen;
+  }
+  return diagonalToca(a, b, r, margen);
+}
+
+/** ¿El segmento oblicuo (a,b) toca el rectángulo `r`? (Liang-Barsky.) */
+function diagonalToca(a, b, r, margen) {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const p = [-dx, dx, -dy, dy];
+  const q = [
+    a.x - (r.x - margen),
+    (r.x + r.w + margen) - a.x,
+    a.y - (r.y - margen),
+    (r.y + r.h + margen) - a.y,
+  ];
+  for (let i = 0; i < 4; i += 1) {
+    if (p[i] === 0) {
+      if (q[i] < 0) return false;
+      continue;
+    }
+    const t = q[i] / p[i];
+    if (p[i] < 0) {
+      if (t > t1) return false;
+      if (t > t0) t0 = t;
+    } else {
+      if (t < t0) return false;
+      if (t < t1) t1 = t;
+    }
+  }
+  return true;
+}
+
+/**
+ * ¿Alguno de los tramos del recorrido atraviesa algún nodo?
+ */
+export function cruzaNodos(pts, rects = []) {
+  for (let i = 1; i < (pts || []).length; i += 1) {
+    for (const r of rects || []) {
+      if (segmentCrosses(pts[i - 1], pts[i], r)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Recorta la punta del recorrido para que **no atraviese nodos**: el trazo se
+ * detiene contra la cara del nodo y se queda ahí. Si el nodo queda detrás del
+ * punto de partida, la punta no avanza (la flecha no se da la vuelta).
+ *
+ * Sólo se mira el último tramo: los anteriores los ha dibujado el usuario y
+ * son suyos.
+ */
+export function wallLimit(pts, rects = [], margen = WALL_MARGIN) {
+  if (!pts || pts.length < 2 || !rects || !rects.length) return pts;
+  const a = pts[pts.length - 2];
+  const b = pts[pts.length - 1];
+  const nuevo = limiteTramo(a, b, rects, margen);
+  if (!nuevo || (nuevo.x === b.x && nuevo.y === b.y)) return pts;
+  const out = pts.slice(0, -1);
+  out.push(nuevo);
+  return out;
+}
+
+/** Punto hasta el que puede avanzar el tramo `a`→`b` sin tocar ningún nodo. */
+function limiteTramo(a, b, rects, margen) {
+  if (Math.abs(a.y - b.y) <= ALIGN) {
+    // Tramo horizontal.
+    let x = b.x;
+    for (const r of rects) {
+      if (a.y <= r.y - margen || a.y >= r.y + r.h + margen) continue;
+      if (b.x > a.x) {
+        // Hacia la derecha: para antes del borde izquierdo del nodo.
+        if (r.x + r.w + margen <= a.x || r.x - margen >= b.x) continue;
+        x = Math.max(a.x, Math.min(x, r.x - margen));
+      } else if (b.x < a.x) {
+        // Hacia la izquierda: para antes del borde derecho del nodo.
+        if (r.x - margen >= a.x || r.x + r.w + margen <= b.x) continue;
+        x = Math.min(a.x, Math.max(x, r.x + r.w + margen));
+      }
+    }
+    return { x, y: b.y };
+  }
+  if (Math.abs(a.x - b.x) <= ALIGN) {
+    // Tramo vertical.
+    let y = b.y;
+    for (const r of rects) {
+      if (a.x <= r.x - margen || a.x >= r.x + r.w + margen) continue;
+      if (b.y > a.y) {
+        if (r.y + r.h + margen <= a.y || r.y - margen >= b.y) continue;
+        y = Math.max(a.y, Math.min(y, r.y - margen));
+      } else if (b.y < a.y) {
+        if (r.y - margen >= a.y || r.y + r.h + margen <= b.y) continue;
+        y = Math.min(a.y, Math.max(y, r.y + r.h + margen));
+      }
+    }
+    return { x: b.x, y };
+  }
+  return b;
 }
 
 /**

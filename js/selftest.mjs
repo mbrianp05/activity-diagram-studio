@@ -2,12 +2,12 @@
  * Pruebas de la lógica del diagrama (sin DOM): modelo, validación y simulación.
  * Ejecutar con:  node js/selftest.mjs
  */
-import { sampleDiagram, createNode, createEdge, createDiagram, createLane, deserialize, assignLanes, shiftLanes, swapLanes, removeLaneAt, laneMinHeight, laneTop, nodeById, NODE_TYPES, copyGroup, pasteGroup, groupBounds, freeSpot, LANE_PAD } from './model.js';
+import { sampleDiagram, createNode, createEdge, createDiagram, createLane, deserialize, assignLanes, shiftLanes, swapLanes, removeLaneAt, laneMinHeight, laneTop, nodeById, NODE_TYPES, copyGroup, pasteGroup, groupBounds, freeSpot, LANE_PAD, isRotatable, rotateNode, orientationLabel, minSize, resizeTo } from './model.js';
 import { validate, summary } from './validate.js';
 import { createSim, start, step, evaluate } from './simulate.js';
 import {
   anchorFor, anchors, pickSides, nodeSides, edgeGeometry, labelSpot, guidePoint, avoidNodes,
-  nearestOnPolyline, sideNear, userRouteTip, END_RING_GAP, ARROW_GAP,
+  nearestOnPolyline, sideNear, userRouteTip, userRoute, exitGuide, linkRoute, EXIT_GAP, END_RING_GAP, ARROW_GAP,
 } from './routing.js';
 import { unionBox, alignTargets, snapMove, snapSize, snapLine, planAlign, planDistribute } from './align.js';
 import { shapeAttrs, tridentePuntos, ACTIVITY_RX } from './render.js';
@@ -661,42 +661,57 @@ console.log('\n17b. El lado de entrada: el más cercano al puntero');
   check('círculo: abajo', sideNear(ini, { x: 10, y: 18 }) === 'bottom', sideNear(ini, { x: 10, y: 18 }));
 }
 
-console.log('\n17c. El trazo dobla solo una vez tras un giro');
+console.log('\n17c. El trazo no dobla solo: cada giro lo marca el usuario');
 {
   const orto = (pts) => pts.every((p, i) => i === 0
     || p.x === pts[i - 1].x || p.y === pts[i - 1].y);
   const p0 = { x: 0, y: 0 };
-  const n0 = { x: 1, y: 0 };
+  const derecha = { x: 1, y: 0 };
+  const abajo = { x: 0, y: 1 };
 
-  // Sin giros: el trazo sale recto en el eje elegido y llega al puntero con un
-  // único cambio de dirección.
-  const cola = [{ x: 120, y: 0 }, { x: 120, y: 60 }];
-  const pts = userRouteTip(p0, n0, [], cola);
-  check('un tramo recto y un desvío, todo ortogonal', orto(pts), JSON.stringify(pts));
-  check('el desvío ocurre una sola vez',
-    pts.filter((p) => p.x === 120).length === 2, JSON.stringify(pts));
-  check('el trazo llega al puntero',
-    pts[pts.length - 1].x === 120 && pts[pts.length - 1].y === 60, JSON.stringify(pts));
+  // Salir de frente: el trazo es recto hasta el punto guiado, sin codo.
+  const tipRecto = exitGuide(p0, derecha, 'x', { x: 120, y: 60 });
+  const recto = userRouteTip(p0, derecha, [], [tipRecto]);
+  check('sin puntos de giro el trazo es recto', recto.length === 2,
+    JSON.stringify(recto));
+  check('y termina en el punto guiado, no en el cursor',
+    recto[1].x === 120 && recto[1].y === 0, JSON.stringify(recto));
 
-  // La punta al mismo alto que la base: el desvío tiene longitud cero y
-  // desaparece (el trazo queda recto).
-  const recto = userRouteTip(p0, n0, [], [{ x: 120, y: 0 }, { x: 120, y: 0 }]);
-  check('sin desvío no queda un tramo de cero', orto(recto) && recto.length <= 2, JSON.stringify(recto));
+  // Salir en paralelo al lado: el único codo automático separa del borde.
+  const tipParalelo = exitGuide(p0, abajo, 'x', { x: 120, y: 0 });
+  check('la salida paralela se separa del nodo',
+    tipParalelo.x === 120 && tipParalelo.y === EXIT_GAP, JSON.stringify(tipParalelo));
+  const paralelo = userRouteTip(p0, abajo, [], [tipParalelo]);
+  check('solo hay el codo de separación',
+    orto(paralelo) && paralelo.length - 2 === 1, JSON.stringify(paralelo));
+  check('el codo cae justo al salir del nodo',
+    paralelo[1].x === 0 && paralelo[1].y === EXIT_GAP, JSON.stringify(paralelo));
+  check('y no se desvía hacia el cursor',
+    paralelo[paralelo.length - 1].y === EXIT_GAP, JSON.stringify(paralelo));
 
-  // Con un giro de por medio, el tramo nuevo también puede doblar una vez: la
-  // flecha baja hasta el giro, sigue recta y se desvía al puntero.
-  const conGiro = userRouteTip(p0, n0, [{ x: 40, y: -30 }], [{ x: 40, y: 90 }, { x: 200, y: 90 }]);
-  check('tras el giro vuelve a poder doblar', orto(conGiro), JSON.stringify(conGiro));
-  check('el desvío ocurre en el tramo del puntero',
-    conGiro[conGiro.length - 1].x === 200 && conGiro[conGiro.length - 1].y === 90, JSON.stringify(conGiro));
-  check('y no encadena un segundo desvío automático',
-    !conGiro.slice(conGiro.findIndex((p) => p.x === 40 && p.y === -30) + 1)
-      .some((p, i, t) => i > 0 && p.x !== t[i - 1].x && p.y !== t[i - 1].y),
-    JSON.stringify(conGiro));
+  // Salir alejándose por la normal no añade separación.
+  const tipFrente = exitGuide(p0, abajo, 'y', { x: 0, y: 100 });
+  check('salir de frente por la normal no añade separación',
+    tipFrente.x === 0 && tipFrente.y === 100, JSON.stringify(tipFrente));
 
-  // Un solo punto de cola (sin desvío) sigue funcionando.
-  check('también acepta un único punto',
-    orto(userRouteTip(p0, n0, [], [{ x: 90, y: 0 }])), JSON.stringify(userRouteTip(p0, n0, [], [{ x: 90, y: 0 }])));
+  // Tras un giro fijado por el usuario, el tramo sigue recto hasta el guiado.
+  const conGiro = userRouteTip(p0, derecha, [{ x: 40, y: 0 }], [{ x: 40, y: 90 }]);
+  check('tras el giro no hay un segundo codo automático',
+    orto(conGiro) && conGiro.length - 2 === 1, JSON.stringify(conGiro));
+  check('el giro es el que marcó el usuario',
+    conGiro[1].x === 40 && conGiro[1].y === 0, JSON.stringify(conGiro));
+
+  // Al cerrar directamente contra el destino, la salida paralela también se
+  // separa: es la única desviación que no se ha clicado.
+  const directa = linkRoute({ x: 200, y: 100 }, abajo, { x: 50, y: 100 }, derecha);
+  check('el cierre directo también separa la salida paralela',
+    directa[1].x === 200 && directa[1].y === 100 + EXIT_GAP, JSON.stringify(directa));
+  check('y el resto del recorrido es ortogonal', orto(directa), JSON.stringify(directa));
+
+  // Salir de frente no añade codos al recorrido por defecto.
+  const frente = linkRoute({ x: 0, y: 0 }, derecha, { x: 200, y: 0 }, { x: -1, y: 0 });
+  check('el recorrido por defecto de frente sigue siendo recto',
+    frente.length === 2, JSON.stringify(frente));
 }
 
 console.log('\n17d. Enganche de las líneas de una flecha a los nodos');
@@ -717,6 +732,67 @@ console.log('\n17d. Enganche de las líneas de una flecha a los nodos');
   check('las referencias del enganche son borde, centro y borde',
     t.xs.length === 3 && t.ys.length === 3, JSON.stringify(t.xs.map((q) => q.v)));
   check('y son las del nodo', t.xs.every((q) => q.v === a.x || q.v === a.x + a.w / 2 || q.v === a.x + a.w));
+}
+
+console.log('\n17e. La llegada entra perpendicular al lado del nodo');
+{
+  const orto = (pts) => pts.every((p, i) => i === 0
+    || p.x === pts[i - 1].x || p.y === pts[i - 1].y);
+  const p3 = { x: 100, y: 100 };
+
+  // El caso que se quedaba pegado: el último punto está justo debajo del ancla
+  // izquierda, así que el tramo llegaba en vertical, paralelo al borde.
+  const desdeAbajo = userRoute({ x: 100, y: 300 }, { x: 0, y: 1 }, p3, { x: -1, y: 0 }, [{ x: 100, y: 180 }]);
+  const a = desdeAbajo[desdeAbajo.length - 1];
+  const b = desdeAbajo[desdeAbajo.length - 2];
+  check('entra perpendicular por la izquierda',
+    orto(desdeAbajo) && a.y === b.y && a.x > b.x, JSON.stringify(desdeAbajo));
+  check('con el margen de llegada',
+    b.x === p3.x - EXIT_GAP, JSON.stringify(desdeAbajo));
+
+  // Llegada en paralelo desde abajo a la derecha: se aparta en la normal y el
+  // último tramo entra recto.
+  const porLaDerecha = userRoute({ x: 300, y: 140 }, { x: 1, y: 0 }, p3, { x: 1, y: 0 }, [{ x: 200, y: 140 }]);
+  const c = porLaDerecha[porLaDerecha.length - 1];
+  const d = porLaDerecha[porLaDerecha.length - 2];
+  check('entra perpendicular por la derecha',
+    orto(porLaDerecha) && c.y === d.y && c.x < d.x, JSON.stringify(porLaDerecha));
+  check('y se aparta de la derecha',
+    d.x === p3.x + EXIT_GAP, JSON.stringify(porLaDerecha));
+
+  // Llegada paralela al lado superior: el último tramo es vertical.
+  const porArriba = linkRoute({ x: 180, y: 160 }, { x: 1, y: 0 }, p3, { x: 0, y: -1 });
+  const e = porArriba[porArriba.length - 1];
+  const f = porArriba[porArriba.length - 2];
+  check('entra perpendicular por arriba',
+    orto(porArriba) && e.x === f.x && e.y > f.y, JSON.stringify(porArriba));
+  check('y se aparta de arriba',
+    f.y === p3.y - EXIT_GAP, JSON.stringify(porArriba));
+
+  // Entrada de frente: no añade codos ni un tramo de más.
+  const deFrente = linkRoute({ x: 0, y: 100 }, { x: 1, y: 0 }, { x: 200, y: 100 }, { x: -1, y: 0 });
+  check('la entrada de frente no añade codos', deFrente.length === 2, JSON.stringify(deFrente));
+
+  // Integración con la geometría real: un flujo cuyo último punto cae justo
+  // bajo el ancla izquierda del destino (el caso de la captura).
+  const g = createDiagram();
+  const destino = createNode('activity', 100, 100, { label: 'Destino' });
+  const origen = createNode('activity', 400, 300, { label: 'Origen' });
+  g.nodes.push(origen, destino);
+  const flujo = createEdge(origen.id, destino.id, {
+    fromSide: 'bottom',
+    toSide: 'left',
+    way: [{ x: 100, y: 300 }],
+  });
+  g.edges.push(flujo);
+  const geo = edgeGeometry(g, flujo);
+  const fin = geo.pts[geo.pts.length - 1];
+  const antes = geo.pts[geo.pts.length - 2];
+  check('la flecha incidente entra perpendicular al lado izquierdo',
+    orto(geo.pts) && fin.y === antes.y && fin.x > antes.x, JSON.stringify(geo.pts));
+  check('con el margen de llegada sobre el ancla',
+    Math.abs(antes.x - (geo.p2.x - EXIT_GAP)) < 0.01, JSON.stringify(geo));
+  check('sin atravesar el nodo destino', !cruzaNodo(geo.pts, destino), JSON.stringify(geo.pts));
 }
 
 console.log('\n18. Copiar y pegar (portapapeles)');
@@ -1073,6 +1149,119 @@ console.log('\n23. Nodos de proceso, tiempo y notificación');
   check('cambiar de tipo no deja atributos del anterior',
     shapeAttrs(abierto.nodes[1]).tag === 'rect' && shapeAttrs(abierto.nodes[1]).attrs.rx === 12,
     JSON.stringify(shapeAttrs(abierto.nodes[1])));
+}
+
+console.log('\n24. Orientación de los nodos girables (fork, join y tiempo)');
+{
+  const g = createDiagram();
+  const ini = createNode('start', 100, 300);
+  const barra = createNode('fork', 300, 300);
+  const reloj = createNode('tiempo', 500, 300);
+  const fin = createNode('end', 700, 300);
+  g.nodes.push(ini, barra, reloj, fin);
+  const e1 = createEdge(ini.id, barra.id, { fromSide: 'right', toSide: 'left' });
+  const e2 = createEdge(barra.id, reloj.id, { fromSide: 'right', toSide: 'left' });
+  g.edges.push(e1, e2);
+
+  check('sólo fork, join y tiempo se pueden girar',
+    isRotatable(barra) && isRotatable(createNode('join', 0, 0)) && isRotatable(reloj)
+    && !isRotatable(ini) && !isRotatable(createNode('activity', 0, 0))
+    && !isRotatable(createNode('decision', 0, 0)));
+
+  // La barra de paralelismo: de fábrica en vertical (alta y estrecha).
+  check('la barra empieza vertical', barra.rot === 0 && barra.h > barra.w,
+    `${barra.w}x${barra.h} rot=${barra.rot}`);
+  check('la barra se conecta por los lados', nodeSides(barra).join(',') === 'left,right',
+    nodeSides(barra).join(','));
+
+  rotateNode(g, barra);
+  check('girada 90° la barra queda horizontal',
+    barra.rot === 90 && barra.w > barra.h && barra.w === 136 && barra.h === 12,
+    `${barra.w}x${barra.h} rot=${barra.rot}`);
+  check('girada, la barra se conecta por arriba y por abajo',
+    nodeSides(barra).join(',') === 'top,bottom'
+    && Object.keys(anchors(barra)).join(',') === 'top,bottom', nodeSides(barra).join(','));
+  check('las bolitas del flujo siguen en el sitio equivalente',
+    e1.toSide === 'top' && e2.fromSide === 'bottom',
+    `${e1.toSide}/${e2.fromSide}`);
+  check('el inspector llama horizontal a la barra girada',
+    orientationLabel(barra) === 'Horizontal', orientationLabel(barra));
+
+  rotateNode(g, barra, -1);
+  check('girar dos veces vuelve a la posición de partida',
+    barra.rot === 0 && barra.w === 12 && barra.h === 136,
+    `${barra.w}x${barra.h} rot=${barra.rot}`);
+
+  // El reloj de arena: es cuadrado, así que sólo cambia la figura.
+  check('el reloj empieza con las barras a los lados',
+    reloj.rot === 0 && nodeSides(reloj).join(',') === 'left,right', nodeSides(reloj).join(','));
+  const ptsTumbado = shapeAttrs(reloj).attrs.points.split(' ').map((p) => p.split(',').map(Number));
+  rotateNode(g, reloj);
+  const ptsDePie = shapeAttrs(reloj).attrs.points.split(' ').map((p) => p.split(',').map(Number));
+  const cx = reloj.x + reloj.w / 2;
+  const cy = reloj.y + reloj.h / 2;
+  check('girado, el reloj sigue siendo cuadrado', reloj.w === reloj.h && reloj.w === 56,
+    `${reloj.w}x${reloj.h}`);
+  check('girado, el reloj tiene las barras arriba y abajo',
+    ptsDePie.some((p) => p[0] === reloj.x && p[1] === reloj.y)
+    && ptsDePie.some((p) => p[0] === reloj.x + reloj.w && p[1] === reloj.y)
+    && ptsDePie.some((p) => p[0] === reloj.x && p[1] === reloj.y + reloj.h)
+    && ptsDePie.some((p) => p[0] === reloj.x + reloj.w && p[1] === reloj.y + reloj.h),
+    JSON.stringify(ptsDePie));
+  check('girado, el reloj se conecta por arriba y por abajo',
+    nodeSides(reloj).join(',') === 'top,bottom', nodeSides(reloj).join(','));
+  check('el reloj tumbado tenía las barras verticales',
+    ptsTumbado.some((p) => p[0] === reloj.x && p[1] === reloj.y)
+    && ptsTumbado.some((p) => p[0] === reloj.x + reloj.w && p[1] === reloj.y + reloj.h),
+    JSON.stringify(ptsTumbado));
+  check('las diagonales siguen cruzándose en el centro',
+    ptsDePie.filter((p) => p[0] === cx && p[1] === cy).length === 2, JSON.stringify(ptsDePie));
+
+  // Un nodo que no se puede girar no cambia.
+  const antes = { ...ini };
+  rotateNode(g, ini);
+  check('una acción no se gira', ini.rot === 0 && ini.x === antes.x && ini.w === antes.w,
+    `${ini.w}x${ini.h}`);
+
+  // Las medidas mínimas dependen de la orientación.
+  rotateNode(g, barra);
+  check('la barra girada se acorta por el otro lado',
+    minSize(barra).w === 72 && minSize(barra).h === 8, JSON.stringify(minSize(barra)));
+  rotateNode(g, barra, -1);
+  check('la barra vertical se acorta por su lado corto',
+    minSize(barra).w === 8 && minSize(barra).h === 72, JSON.stringify(minSize(barra)));
+  rotateNode(g, barra);
+
+  // Estirar la barra: sólo cambia su largo, el grosor no se toca.
+  const estiradaV = resizeTo(barra, 200, 40);
+  check('una barra horizontal no cambia de alto al estirarla',
+    estiradaV.w === 200 && estiradaV.h === 12, JSON.stringify(estiradaV));
+  const alReves = { ...barra, rot: 0, w: 12, h: 136 };
+  const estiradaH = resizeTo(alReves, 40, 200);
+  check('una barra vertical no cambia de ancho al estirarla',
+    estiradaH.w === 12 && estiradaH.h === 200, JSON.stringify(estiradaH));
+  check('la barra no se acorta por debajo de su largo mínimo',
+    resizeTo(alReves, 12, 10).h === 72 && resizeTo(barra, 10, 12).w === 72,
+    JSON.stringify([resizeTo(alReves, 12, 10), resizeTo(barra, 10, 12)]));
+  const accion = createNode('activity', 0, 0);
+  const estiradaA = resizeTo(accion, 300, 100);
+  check('una acción sí se estira por los dos lados',
+    estiradaA.w === 300 && estiradaA.h === 100, JSON.stringify(estiradaA));
+  check('ningún nodo baja de sus medidas mínimas',
+    resizeTo(accion, 10, 10).w === NODE_TYPES.activity.minW
+    && resizeTo(accion, 10, 10).h === NODE_TYPES.activity.minH,
+    JSON.stringify(resizeTo(accion, 10, 10)));
+
+  // La orientación sobrevive al guardado y a la copipastedora.
+  const back = deserialize(JSON.stringify(g));
+  const barraBack = back.nodes.find((n) => n.type === 'fork');
+  const relojBack = back.nodes.find((n) => n.type === 'tiempo');
+  check('la orientación sobrevive al guardado',
+    barraBack.rot === 90 && relojBack.rot === 90,
+    `${barraBack.rot}/${relojBack.rot}`);
+  const copia = pasteGroup(back, copyGroup(back, [{ type: 'node', id: barraBack.id }]), 40, 0);
+  check('la orientación sobrevive a copiar y pegar',
+    copia.nodes[0].rot === 90 && copia.nodes[0].w === 136, JSON.stringify(copia.nodes[0]));
 }
 
 console.log(`\n${pass} pruebas ok, ${fail} fallos\n`);

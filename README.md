@@ -12,7 +12,7 @@ Pensado para modelar y comprobar procesos sin instalar nada: es HTML + CSS + ES 
 - **Validar** el diagrama: un solo inicio, fines sin salida, fork con ≥2 salidas, join con ≥2 entradas, etc.
 - **Simular** el flujo paso a paso, incluyendo decisiones con condiciones, ramas paralelas y bloqueos.
 - **Guardar y abrir** diagramas en JSON, con autoguardado en `localStorage`.
-- **Exportar** a SVG o PNG.
+- **Exportar** a SVG, PNG o WEBP.
 - Deshacer/rehacer, copiar/pegar, zoom y paneo.
 
 ## Cómo iniciarla

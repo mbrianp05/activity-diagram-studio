@@ -4,6 +4,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description"
+    content="Crea diagramas de actividades UML. Todos los nodos estándar. Crea o modifica un diagrama. Exporta tus diagramas como imágenes.">
   <title>Activity Diagram Studio</title>
   <link rel="icon"
     href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230b0b0c'/%3E%3Cpath d='M9 8h9l6 8-6 8H9z' fill='none' stroke='white' stroke-width='2.4'/%3E%3C/svg%3E" />
@@ -14,26 +16,7 @@
   <div class="app">
 
     <header class="topbar">
-      <div class="brand">
-        <svg viewBox="0 0 32 32" width="22" height="22" aria-hidden="true">
-          <rect width="32" height="32" rx="7" fill="#0b0b0c" stroke="#3a3a40" />
-          <path d="M9 8h9l6 8-6 8H9z" fill="none" stroke="#fff" stroke-width="2.4" />
-        </svg>
-        <strong>Activity Studio</strong>
-      </div>
-
       <div class="topbar-actions">
-        <button id="btn-undo" class="btn icon" title="Deshacer (Ctrl+Z)" aria-label="Deshacer"><svg viewBox="0 0 24 24"
-            fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 9h10a6 6 0 0   1 0 12h-7" />
-            <path d="M8 5l-4 4 4 4" />
-          </svg></button>
-        <button id="btn-redo" class="btn icon" title="Rehacer (Ctrl+Y)" aria-label="Rehacer"><svg viewBox="0 0 24 24"
-            fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M20 9H10a6 6 0 0 0 0 12h7" />
-            <path d="M16 5l4 4-4 4" />
-          </svg></button>
-        <span class="sep"></span>
         <button id="btn-new" class="btn icon" title="Nuevo diagrama" aria-label="Nuevo"><svg viewBox="0 0 24 24"
             fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
             <path d="M12 5v14M5 12h14" />
@@ -57,18 +40,14 @@
           <div class="menu-list">
             <button id="btn-svg" class="menu-item">Como SVG</button>
             <button id="btn-png" class="menu-item">Como PNG</button>
+            <button id="btn-webp" class="menu-item">Como WEBP</button>
           </div>
         </details>
-        <span class="sep"></span>
         <button id="btn-validate" class="btn icon" title="Validar diagrama" aria-label="Validar"><svg
             viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
             stroke-linejoin="round">
             <circle cx="12" cy="12" r="8" />
             <path d="M8.5 12.5l2.5 2.5 4.5-5" />
-          </svg></button>
-        <button id="btn-sim" class="btn icon primary" title="Simular" aria-label="Simular"><svg viewBox="0 0 24 24"
-            fill="currentColor">
-            <path d="M8 5v14l11-7z" />
           </svg></button>
         <input type="file" id="file-input" accept="application/json,.json" hidden />
       </div>
@@ -199,36 +178,6 @@
         </g>
       </svg>
 
-      <div class="sim-bar" id="sim-bar" hidden>
-        <span class="sim-status" id="sim-status">Simulación</span>
-        <label class="sim-var">var <input id="sim-var-name" value="x" size="4" /> = <input id="sim-var-value" value="3"
-            size="4" /></label>
-        <button class="btn icon" id="sim-reset" title="Reiniciar" aria-label="Reiniciar"><svg viewBox="0 0 24 24"
-            fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 10a8 8 0 1 1-1 6" />
-            <path d="M4 4v6h6" />
-          </svg></button>
-        <button class="btn icon" id="sim-back" title="Paso atrás" aria-label="Atrás"><svg viewBox="0 0 24 24"
-            fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6 5v14" />
-            <path d="M18 6l-8 6 8 6" />
-          </svg></button>
-        <button class="btn icon primary" id="sim-step" title="Avanzar un paso" aria-label="Paso"><svg
-            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
-            stroke-linejoin="round">
-            <path d="M6 6l8 6-8 6" />
-            <path d="M18 5v14" />
-          </svg></button>
-        <button class="btn icon" id="sim-run" title="Ejecutar" aria-label="Ejecutar"><svg viewBox="0 0 24 24"
-            fill="currentColor">
-            <path d="M8 5v14l11-7z" />
-          </svg></button>
-        <button class="btn icon" id="sim-exit" title="Salir de la simulación" aria-label="Salir"><svg
-            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-            <path d="M6 6l12 12M18 6L6 18" />
-          </svg></button>
-      </div>
-
       <div class="zoom-bar">
         <button class="btn icon" id="zoom-out" title="Alejar">&minus;</button>
         <span id="zoom-label">100%</span>
@@ -237,11 +186,6 @@
       </div>
     </main>
 
-    <footer class="statusbar">
-      <span id="status-sel">Sin selección</span>
-      <span class="sep"></span>
-      <span id="status-count">0 nodos · 0 flujos</span>
-    </footer>
   </div>
 
   <dialog id="prompt-dialog">

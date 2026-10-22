@@ -1,5 +1,5 @@
 /**
- * Exportación: descarga de archivos, SVG autonomouso y PNG rasterizado.
+ * Exportación: descarga de archivos, SVG autónomo y rasterizado a PNG/WEBP.
  */
 import { bounds } from './model.js';
 
@@ -100,7 +100,11 @@ export function exportSvg(svg, diagram, { forPng = false, padding = 40 } = {}) {
   return `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(out)}`;
 }
 
-export async function exportPng(svgText, filename, scale = 2) {
+/**
+ * Rasteriza el SVG a un canvas opaco (mismo fondo que el tema) con un factor de
+ * escala. Sirve tanto para PNG como para WEBP.
+ */
+async function rasterize(svgText, scale = 2) {
   const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   try {
@@ -119,13 +123,42 @@ export async function exportPng(svgText, filename, scale = 2) {
     ctx.fillStyle = '#101012';
     ctx.fillRect(0, 0, w, h);
     ctx.drawImage(img, 0, 0, w, h);
-    const png = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+    return canvas;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** `canvas.toBlob` como promesa; devuelve null si el navegador no puede codificar. */
+function canvasToBlob(canvas, type, quality) {
+  return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+}
+
+export async function exportPng(svgText, filename, scale = 2) {
+  try {
+    const canvas = await rasterize(svgText, scale);
+    const png = await canvasToBlob(canvas, 'image/png');
     if (!png) return false;
     download(filename, png, 'image/png');
     return true;
   } catch {
     return false;
-  } finally {
-    URL.revokeObjectURL(url);
+  }
+}
+
+/**
+ * Exporta a WEBP. Si el navegador no sabe codificar WEBP, `toBlob` devuelve un
+ * PNG: en ese caso se descarga como `.png` y se avisa con `fallback`.
+ */
+export async function exportWebp(svgText, filename, scale = 2, quality = 0.95) {
+  try {
+    const canvas = await rasterize(svgText, scale);
+    const blob = await canvasToBlob(canvas, 'image/webp', quality);
+    if (!blob) return { ok: false, fallback: false };
+    const isWebp = blob.type === 'image/webp';
+    download(isWebp ? filename : filename.replace(/\.webp$/i, '.png'), blob, isWebp ? 'image/webp' : 'image/png');
+    return { ok: true, fallback: !isWebp };
+  } catch {
+    return { ok: false, fallback: false };
   }
 }

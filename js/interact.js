@@ -20,7 +20,7 @@ import {
   readWay,
   cloneDiagram,
   dotMax,
-  laneMinHeight,
+  resizeTo,
 } from "./model.js";
 import {
   edgeGeometry,
@@ -31,35 +31,23 @@ import {
   sideNear,
   userRouteTip,
   guidePoint,
+  guideAxis,
+  exitGuide,
+  wallLimit,
   avoidNodes,
   nearestOnPolyline,
 } from "./routing.js";
-import { LANE_HEADER, shapeAttrs } from "./render.js";
-import { snapMove, snapSize, snapLine, alignTargets, unionBox } from "./align.js";
+import { LANE_HEADER } from "./render.js";
+import { snapMove, snapSize, unionBox } from "./align.js";
 
 const NS = "http://www.w3.org/2000/svg";
 const GRID = 8;
-/** Tolerancia para considerar dos puntos el mismo. */
-const ALIGN = 0.5;
 /**
  * Distancia (en píxeles de pantalla) a la que un nodo se engancha a la línea de
  * otro: es lo que decide si dos elementos quedan «en la misma línea». Es
  * generosa a propósito, pero independiente del zoom.
  */
 const GUIDE_PX = 6;
-
-/**
- * Tipos de nodo que se nombran nada más aparecer: sin texto no dicen nada, así
- * que al insertarlos se abre el diálogo con el nombre ya seleccionado.
- */
-export const ASK_LABEL = [
-  "activity",
-  "decision",
-  "proceso",
-  "enviar",
-  "recibir",
-  "tiempo",
-];
 
 function svgEl(name, attrs = {}) {
   const n = document.createElementNS(NS, name);
@@ -168,13 +156,6 @@ export class Interaction {
       this.removeRoutePoint(Number(puntoCtrl));
       return;
     }
-    // El asidero del carril manda sobre el paneo: si el clic se lo come el
-    // arrastre del lienzo, el carril no cambia de alto hasta el siguiente clic.
-    if (target.dataset && target.dataset.laneResize !== undefined) {
-      e.preventDefault();
-      this.beginLaneResize(e, this.toWorld(e.clientX, e.clientY), Number(target.dataset.laneResize));
-      return;
-    }
     if (e.button === 1 || e.button === 2 || this.spaceDown) {
       // Botón central o derecho: desplazar el lienzo en horizontal y vertical.
       e.preventDefault();
@@ -242,6 +223,10 @@ export class Interaction {
     // Cabecera de carril
     if (target.dataset && target.dataset.laneTitle !== undefined) {
       this.app.editLaneName(Number(target.dataset.laneTitle));
+      return;
+    }
+    if (target.dataset && target.dataset.laneResize !== undefined) {
+      this.beginLaneResize(e, w, Number(target.dataset.laneResize));
       return;
     }
     // Etiqueta de flujo: un clic sólo selecciona (el doble clic la edita).
@@ -318,6 +303,7 @@ export class Interaction {
       const n = nodeById(this.app.diagram, i);
       return { id: i, x0: n.x, y0: n.y, w: n.w, h: n.h };
     });
+    this.clearAlignGuides();
     this.drag = {
       kind: "nodes",
       start: w,
@@ -423,7 +409,8 @@ export class Interaction {
     this.app.commit("Nodo creado");
     // Las acciones y las decisiones se nombran nada más aparecer: sin texto no
     // dicen nada, así que se pide el nombre en el acto.
-    if (ASK_LABEL.includes(type)) this.app.editNodeLabel(node.id);
+    if (type === "activity" || type === "decision")
+      this.app.editNodeLabel(node.id);
     return node;
   }
 
@@ -454,13 +441,12 @@ export class Interaction {
   beginLaneResize(e, w, index) {
     const lane = this.app.diagram.lanes[index];
     if (!lane) return;
-    // Un clic que no llega a mover nada no debe dejar un paso en el historial.
+    this.app.pushHistory("Redimensionar carril");
     this.drag = {
       kind: "lane",
       lane,
       index,
       h0: lane.height,
-      min: laneMinHeight(this.app.diagram, index),
       start: w,
       moved: false,
     };
@@ -503,18 +489,9 @@ export class Interaction {
       tip: null,
       hover: null,
     };
-    this.tempEdge = svgEl("path", {
-      class: "temp-edge",
-      "marker-end": "url(#arrow-temp)",
-    });
+    this.tempEdge = svgEl("path", { class: "temp-edge" });
     this.overlay.appendChild(this.tempEdge);
     this.app.select({ type: "node", id: from });
-    this.app.status(
-      `Sale por ${labelSide(side)} · mueve el cursor para guiar la flecha · clic para cambiar de dirección · Esc para cancelar`,
-    );
-    this.app.toast(
-      "Trazando la flecha: un clic cambia la dirección; clic en la bolita del destino para cerrarla y Esc para cancelar.",
-    );
     this.drawRouteHandles();
   }
 
@@ -539,14 +516,9 @@ export class Interaction {
         w.y > n.y + n.h + tol
       )
         continue;
-      // La bolita se agarra con una tolerancia acotada por el tamaño del nodo:
-      // si la tolerancia es la misma para todos, dentro de una caja grande
-      // cualquier clic queda cerca de alguna bolita y la flecha entra siempre
-      // por el lado equivocado en vez de mirar dónde ha caído el puntero.
-      const tolNodo = Math.min(tol, Math.max(8, Math.min(n.w, n.h) * 0.3));
       for (const p of this.app.renderer.portsOf(n)) {
         const dist = Math.hypot(p.x - w.x, p.y - w.y);
-        if (dist <= tolNodo && (!mejor || dist < mejor.dist))
+        if (dist <= tol && (!mejor || dist < mejor.dist))
           mejor = { node: n, side: p.side, p, dist };
       }
     }
@@ -554,15 +526,14 @@ export class Interaction {
   }
 
   /**
-   * Destino de la flecha bajo el puntero. Dentro del cuerpo de un nodo manda el
-   * punto donde se ha hecho clic (el lado lo decide `sideNear`); la bolita sólo
-   * se respeta si el puntero está realmente encima de ella. Fuera del cuerpo se
-   * busca la bolita más cercana, para no tener que apuntar al píxel.
+   * Destino de la flecha bajo el puntero: la bolita más cercana (no hace falta
+   * apuntarla) y, si no hay ninguna a tiro, el nodo que hay debajo. El lado lo
+   * da la bolita; si el puntero está en el cuerpo, el lado más cercano.
    */
   targetAt(w, tolPantalla = 26) {
-    const nodo = nodeAt(this.app.diagram, w.x, w.y);
-    const bolita = this.portAt(w, nodo ? 10 : tolPantalla);
+    const bolita = this.portAt(w, tolPantalla);
     if (bolita) return bolita;
+    const nodo = nodeAt(this.app.diagram, w.x, w.y);
     return nodo ? { node: nodo, side: null, p: null, dist: 0 } : null;
   }
 
@@ -622,12 +593,6 @@ export class Interaction {
     if (last && Math.abs(last.x - p.x) < 1 && Math.abs(last.y - p.y) < 1)
       return;
     r.way.push({ x: Math.round(p.x), y: Math.round(p.y) });
-    // El giro ya está fijado: el siguiente tramo vuelve a poder ir en
-    // cualquier dirección (y a doblar solo una vez más hacia el puntero).
-    r.axis = null;
-    this.app.status(
-      `${r.way.length} punto(s) de giro · clic en el destino para cerrar el flujo · Esc cancela`,
-    );
     this.drawRouteHandles();
     if (this.last) this.drawTempEdge();
   }
@@ -703,9 +668,8 @@ export class Interaction {
   }
 
   /**
-   * Puntos de control visibles: los del flujo en edición (herramienta ruta).
-   * Mientras se traza una flecha nueva no se dibujan: los giros ya se ven en
-   * el propio trazo y el preview queda limpio.
+   * Puntos de control visibles: los del flujo en edición (herramienta ruta) o
+   * los que ya se han fijado mientras se traza una flecha nueva.
    */
   drawRouteHandles() {
     const pendiente = this.route ? this.route.way : null;
@@ -713,10 +677,8 @@ export class Interaction {
     if (!pendiente && this.routeEdge)
       edge = edgeById(this.app.diagram, this.routeEdge);
     const pts =
-      (pendiente && []) ||
-      (edge && Array.isArray(edge.way) ? edge.way : null) ||
-      [];
-    const id = edge?.id || "";
+      pendiente || (edge && Array.isArray(edge.way) ? edge.way : null) || [];
+    const id = pendiente ? "pendiente" : edge?.id || "";
     const key = `${id}:${pts.length}`;
     if (!this.routeLayer) {
       this.routeLayer = svgEl("g", { class: "route-points" });
@@ -737,7 +699,7 @@ export class Interaction {
     const r = 5 / (this.app.diagram.view.k || 1);
     pts.forEach((p, i) => {
       const c = svgEl("circle", {
-        class: "route-point",
+        class: `route-point${pendiente ? " pending" : ""}`,
         cx: p.x,
         cy: p.y,
         r,
@@ -797,7 +759,8 @@ export class Interaction {
       let ox = dx;
       let oy = dy;
       if (d.free) {
-        // Alt: sin rejilla ni ajuste, cada nodo va donde lo suelta el puntero.
+        // Alt: ni rejilla ni guías, cada nodo va donde lo suelta el puntero.
+        this.clearAlignGuides();
       } else {
         if (this.snap) {
           // Rejilla: se snapa el origen de la caja del grupo (no el
@@ -806,9 +769,8 @@ export class Interaction {
           ox = Math.round((d.box.x + ox) / GRID) * GRID - d.box.x;
           oy = Math.round((d.box.y + oy) / GRID) * GRID - d.box.y;
         }
-        // Alineación: si un borde o el centro del grupo queda a tiro de la línea
-        // de otro nodo, se corrige para que coincidan de verdad (sin dibujar
-        // guías: el nodo simplemente cae en su sitio).
+        // Guías de alineación: si un borde o el centro del grupo queda a tiro de
+        // la línea de otro nodo, se corrige para que coincidan de verdad.
         const res = snapMove(
           this.app.diagram.nodes,
           d.items.map((it) => ({
@@ -823,6 +785,7 @@ export class Interaction {
         );
         ox = res.dx;
         oy = res.dy;
+        this.drawAlignGuides(res.guides);
       }
       for (const it of d.items) {
         const n = nodeById(this.app.diagram, it.id);
@@ -842,7 +805,6 @@ export class Interaction {
 
     if (d.kind === "resize") {
       const t = NODE_TYPES[d.node.type];
-      const barra = d.node.type === "fork" || d.node.type === "join";
       const cuadrado =
         d.node.type === "decision" ||
         d.node.type === "tiempo" ||
@@ -855,9 +817,8 @@ export class Interaction {
       let nh = d.free
         ? d.h0 + (w.y - d.start.y)
         : Math.round((d.h0 + (w.y - d.start.y)) / GRID) * GRID;
-      if (barra) nw = d.w0;
       if (d.free) {
-        // Alt: sin ajuste de tamaño, la caja sale tal cual.
+        this.clearAlignGuides();
       } else {
         // El borde que se arrastra se engancha a las líneas de los demás nodos,
         // así dos cajas acaban con la misma medida. Los cuadrados sólo se
@@ -865,13 +826,14 @@ export class Interaction {
         const res = snapSize(this.app.diagram.nodes, d.node, nw, nh, {
           tol: GUIDE_PX / (this.app.diagram.view.k || 1),
         });
-        nw = barra ? d.w0 : res.w;
+        nw = res.w;
         nh = cuadrado ? res.w : res.h;
+        this.drawAlignGuides(res.guides);
       }
       if (cuadrado) {
-        // Decisión y reloj de arena: cuadrados. Inicio/fin/punto muerto:
-        // círculos (los pequeños, los dos últimos, con tope en su DOT_MAX, que
-        // en el punto muerto es 1.5 veces mayor).
+        // Decisión y tiempo: cuadrados. Inicio/fin/punto muerto: círculos (los
+        // pequeños, los dos últimos, con tope en su DOT_MAX, que en el punto
+        // muerto es 1.5 veces mayor).
         const base = Math.max(t.minW, t.minH, nw, nh);
         const s =
           d.node.type === "decision" || d.node.type === "tiempo"
@@ -879,30 +841,23 @@ export class Interaction {
             : Math.min(dotMax(d.node.type), base);
         d.node.w = s;
         d.node.h = s;
-      } else if (barra) {
-        // La barra de paralelismo sólo crece a lo alto: el ancho es fijo.
-        d.node.w = d.w0;
-        d.node.h = Math.max(t.minH, nh);
       } else {
-        d.node.w = Math.max(t.minW, nw);
-        d.node.h = Math.max(t.minH, nh);
-      }
-      this.app.refresh();
+        // El tamaño respeta la orientación y el tipo: la barra de paralelismo
+        // sólo se estira por su largo (su grosor no cambia) y el resto de nodos
+        // no baja de sus medidas mínimas.
+        const size = resizeTo(d.node, nw, nh);
+        d.node.w = size.w;
+        d.node.h = size.h;
+      }      this.app.refresh();
       return;
     }
 
     if (d.kind === "lane") {
-      const raw = Math.round((d.h0 + (w.y - d.start.y)) / 4) * 4;
-      // El carril no baja de lo que necesitan sus nodos: si se encoge de más,
-      // se quedaría más estrecho que ellos y se saldrían de la banda.
-      const next = Math.max(d.min, raw);
+      const next = Math.max(80, Math.round((d.h0 + (w.y - d.start.y)) / 4) * 4);
       const delta = next - d.lane.height;
       if (delta) {
-        if (!d.moved) this.app.pushHistory("Redimensionar carril");
-        d.moved = true;
         d.lane.height = next;
-        // Los nodos de los carriles posteriores viajan con su banda, así que
-        // un carril intermedio también los mueve arriba o abajo.
+        // Los nodos siguen en su carril: los de abajo se desplazan con la banda.
         shiftLanes(this.app.diagram, d.index, delta);
       }
       this.app.refresh();
@@ -951,9 +906,43 @@ export class Interaction {
     this.drawRouteHandles();
   }
 
+  /* ---------------------------- guías de alineación ---------------------- */
+
+  /**
+   * Dibuja las líneas en las que el grupo acaba de encajar: si una no aparece,
+   * el nodo no está alineado con nada. Sólo vive durante el arrastre.
+   */
+  drawAlignGuides(guides) {
+    if (!guides || !guides.length) {
+      this.clearAlignGuides();
+      return;
+    }
+    if (!this.guideLayer) {
+      this.guideLayer = svgEl("g", { class: "align-guides" });
+      this.overlay.appendChild(this.guideLayer);
+    }
+    this.guideLayer.textContent = "";
+    for (const g of guides) {
+      const attrs =
+        g.axis === "x"
+          ? { x1: g.value, y1: g.from, x2: g.value, y2: g.to }
+          : { x1: g.from, y1: g.value, x2: g.to, y2: g.value };
+      this.guideLayer.appendChild(
+        svgEl("line", { class: "align-guide", ...attrs }),
+      );
+    }
+  }
+
+  clearAlignGuides() {
+    if (!this.guideLayer) return;
+    this.guideLayer.remove();
+    this.guideLayer = null;
+  }
+
   onPointerUp(e) {
     const d = this.drag;
     this.drag = null;
+    this.clearAlignGuides();
     if (this.svg.style.cursor === "grabbing") this.svg.style.cursor = "";
 
     if (!d) {
@@ -971,12 +960,7 @@ export class Interaction {
       const t = this.targetAt(w, 30);
       if (t && t.node.id !== d.from)
         this.finishRoute(t.node.id, t.side || sideNear(t.node, w));
-      else
-        this.app.status(
-          this.route?.way.length
-            ? "Trayectoria en curso: clic en la bolita del destino, clic derecho para otro giro o Esc para cancelar"
-            : "Mueve el ratón para guiar la flecha · clic derecho para fijar el primer giro",
-        );
+
       return;
     }
 
@@ -1034,34 +1018,23 @@ export class Interaction {
     const p0 = { x: ancla.x + n0.x * 1.5, y: ancla.y + n0.y * 1.5 };
     const cursor = w || { x: r.tip?.x ?? p0.x, y: r.tip?.y ?? p0.y };
     const base = r.way.length ? r.way[r.way.length - 1] : p0;
-    // El trazo sale de `base` recto en el eje elegido (para que no parpadee al
-    // mover el ratón en diagonal) y se desvía una sola vez hacia el puntero:
-    // tras un giro, la flecha puede seguir recta y doblar hacia el cursor sin
-    // que haga falta otro clic derecho. Ese codo va alineado con las líneas de
-    // los nodos; a partir de ahí el último lado sólo se estira.
-    const eje = guidePoint(base, cursor, r.axis);
-    r.axis = Math.abs(eje.x - base.x) > ALIGN ? "x" : "y";
-    const punta = this.snapTip(cursor, r.axis);
-    r.tip = r.axis === "x" ? { x: punta.x, y: base.y } : { x: base.x, y: punta.y };
-    const pts = userRouteTip(p0, n0, r.way, [r.tip, punta]);
+    // El primer tramo sale perpendicular al lado del nodo; a partir de ahí el
+    // cursor manda en el eje elegido (cada giro lo fija el usuario con un clic).
+    const axis = guideAxis(base, cursor, r.axis);
+    r.axis = axis;
+    const tip = r.way.length
+      ? guidePoint(base, cursor, axis)
+      : exitGuide(p0, n0, axis, cursor);
+    // La flecha no atraviesa nodos: la punta se detiene contra su cara.
+    const pts = wallLimit(
+      userRouteTip(p0, n0, r.way, tip),
+      this.app.diagram.nodes.filter((n) => n.id !== r.from),
+    );
+    r.tip = pts[pts.length - 1];
     this.tempEdge.setAttribute(
       "d",
-      edgePath({ p1: p0, p2: punta, pts, mid: punta }),
+      edgePath({ p1: p0, p2: r.tip, pts, mid: r.tip }),
     );
-  }
-
-  /**
-   * El puntero se engancha a la línea de los nodos (borde o centro) del eje
-   * del tramo final: si el último lado es vertical se alinea la X, y si es
-   * horizontal la Y. Así los cambios de dirección caen solos sobre los nodos.
-   */
-  snapTip(cursor, axis) {
-    const tol = GUIDE_PX / (this.app.diagram.view.k || 1);
-    const t = alignTargets(this.app.diagram.nodes);
-    if (axis === "x") {
-      return { x: cursor.x + snapLine(cursor.x, t.xs, tol), y: cursor.y };
-    }
-    return { x: cursor.x, y: cursor.y + snapLine(cursor.y, t.ys, tol) };
   }
 
   clearTempEdge() {
@@ -1088,17 +1061,41 @@ export class Interaction {
     if (!this.insertPreview || this.insertPreview.tool !== tool) {
       this.clearInsertPreview();
       const g = svgEl("g", { class: "insert-preview" });
-      const shape = svgEl(shapeAttrs({ type: tool, x: 0, y: 0, w: t.w, h: t.h }).tag, {
-        class: "ghost",
-      });
+      let shape;
+      if (tool === "start" || tool === "end" || tool === "stop") {
+        shape = svgEl("circle", {
+          cx: 0,
+          cy: 0,
+          r: Math.min(t.w, t.h) / 2,
+          class: "ghost",
+        });
+      } else if (tool === "decision") {
+        shape = svgEl("polygon", { class: "ghost" });
+      } else {
+        shape = svgEl("rect", {
+          class: "ghost",
+          rx: tool === "activity" ? 12 : 0,
+        });
+      }
       g.appendChild(shape);
       this.overlay.appendChild(g);
       this.insertPreview = { g, shape, tool };
     }
     const p = this.insertPreview;
-    for (const [k, v] of Object.entries(shapeAttrs({ type: tool, x, y, w: t.w, h: t.h }).attrs)) {
-      if (k === "class") continue;
-      p.shape.setAttribute(k, String(v));
+    if (tool === "start" || tool === "end" || tool === "stop") {
+      p.shape.setAttribute("cx", x + t.w / 2);
+      p.shape.setAttribute("cy", y + t.h / 2);
+    } else if (tool === "decision") {
+      const s = Math.max(t.w, t.h);
+      p.shape.setAttribute(
+        "points",
+        `${x + s / 2},${y} ${x + s},${y + s / 2} ${x + s / 2},${y + s} ${x},${y + s / 2}`,
+      );
+    } else {
+      p.shape.setAttribute("x", x);
+      p.shape.setAttribute("y", y);
+      p.shape.setAttribute("width", t.w);
+      p.shape.setAttribute("height", t.h);
     }
   }
 
@@ -1164,9 +1161,8 @@ export class Interaction {
     const n = nodeById(this.app.diagram, sel[0].id);
     if (!n) return;
     const size = 9 / this.app.diagram.view.k;
-    const barra = n.type === "fork" || n.type === "join";
     this.resizeHandle = svgEl("rect", {
-      x: barra ? n.x + n.w / 2 - size / 2 : n.x + n.w - size / 2,
+      x: n.x + n.w - size / 2,
       y: n.y + n.h - size / 2,
       width: size,
       height: size,
@@ -1175,7 +1171,7 @@ export class Interaction {
       "stroke-width": 1,
       rx: 1,
       "data-resize": "1",
-      style: `cursor: ${barra ? "ns-resize" : "nwse-resize"}`,
+      style: "cursor: nwse-resize",
     });
     this.overlay.appendChild(this.resizeHandle);
   }
@@ -1330,6 +1326,13 @@ export class Interaction {
         this.app.zoomFit();
         break;
       default: {
+        // R: gira 90° el nodo seleccionado (sólo los orientables: fork, join
+        // y tiempo).
+        if (e.key.toLowerCase() === "r") {
+          this.app.rotateNodes();
+          e.preventDefault();
+          break;
+        }
         const map = {
           v: "select",
           s: "start",

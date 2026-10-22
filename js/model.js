@@ -46,7 +46,8 @@ export const NODE_TYPES = {
   // Tiempo: la figura es el propio reloj de arena girado 90° (dos barras
   // verticales a los lados y la cruz de las diagonales). Es cuadrado y algo más
   // pequeño que una actividad (176x64); no cabe texto dentro, así que va sin nombre.
-  tiempo: { label: 'Tiempo', shape: 'time', w: 56, h: 56, minW: 40, minH: 40 },
+  // Es orientable: girado 90° el reloj queda de pie (barras arriba y abajo).
+  tiempo: { label: 'Tiempo', shape: 'time', w: 56, h: 56, minW: 40, minH: 40, rotatable: true },
   // Enviar notificación: caja de esquinas rectas que acaba en un pico hacia
   // fuera por la derecha.
   enviar: { label: 'Enviar notificación', shape: 'send', w: 176, h: 64, minW: 110, minH: 44 },
@@ -58,9 +59,10 @@ export const NODE_TYPES = {
   objeto: { label: 'Objeto', shape: 'object', w: 148, h: 60, minW: 96, minH: 48 },
   // Decisión: cuadrado rotado 45° (puntas arriba/abajo/izq/der). w == h para que sea un cuadrado perfecto.
   decision: { label: 'Decisión', shape: 'decision', w: 132, h: 132, minW: 88, minH: 88 },
-  // Barras de paralelismo: banda fina y alta, con esquinas rectas.
-  fork: { label: 'Paralelo (fork)', shape: 'bar', w: 12, h: 136, minW: 8, minH: 72 },
-  join: { label: 'Paralelo (join)', shape: 'bar', w: 12, h: 136, minW: 8, minH: 72 },
+  // Barras de paralelismo: banda fina y alta, con esquinas rectas. Orientables:
+  // giradas 90° la banda queda tumbada (horizontal).
+  fork: { label: 'Paralelo (fork)', shape: 'bar', w: 12, h: 136, minW: 8, minH: 72, rotatable: true },
+  join: { label: 'Paralelo (join)', shape: 'bar', w: 12, h: 136, minW: 8, minH: 72, rotatable: true },
   note: { label: 'Nota', shape: 'note', w: 168, h: 76, minW: 110, minH: 52 },
 };
 
@@ -94,8 +96,8 @@ export function createNode(type, x, y, patch = {}) {
     const s = Math.min(dotMax(type), Math.max(w, h, t.minW, t.minH));
     w = s; h = s;
   }
-  const { w: _pw, h: _ph, x: _px, y: _py, ...rest } = patch;
-  void _pw; void _ph; void _px; void _py;
+  const { w: _pw, h: _ph, x: _px, y: _py, rot: _rot, ...rest } = patch;
+  void _pw; void _ph; void _px; void _py; void _rot;
   return {
     id: uid('n'),
     type,
@@ -106,8 +108,101 @@ export function createNode(type, x, y, patch = {}) {
     label: rest.label ?? defaultLabel(type),
     note: '',
     lane: null,
+    // Orientación: 0 = tal como viene de fábrica, 90 = girado un cuarto de
+    // vuelta. Sólo la usan los nodos orientables (ver `isRotatable`).
+    rot: _rot === 90 ? 90 : 0,
     ...rest,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Orientación de los nodos                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Tipos de nodo que se pueden girar: la barra de paralelismo (fork/join) y el
+ * reloj de arena (tiempo). Los demás nodos no tienen orientación: su figura
+ * es la misma en cualquier sentido.
+ */
+export function isRotatable(node) {
+  return !!(node && NODE_TYPES[node.type]?.rotatable);
+}
+
+/**
+ * Lado equivalente al girar el nodo un cuarto de vuelta: la cara plana por la
+ * que entran las flechas pasa del lateral al horizontal (o al revés).
+ */
+const SIDE_GIRO = { left: 'top', right: 'bottom', top: 'left', bottom: 'right' };
+
+/**
+ * Gira el nodo 90°. Sus medidas se intercambian (la caja sigue siendo la del
+ * nodo ya girado) y las bolitas de los flujos pasan al lado equivalente
+ * (izquierda<->arriba, derecha<->abajo) para que la flecha siga entrando y
+ * saliendo por el mismo sitio relativo.
+ *
+ * Sólo hay dos orientaciones: la de fábrica (0) y la girada (90). Como estas
+ * figuras son simétricas respecto de su centro, girar dos veces vuelve al
+ * punto de partida.
+ * @param dir 1 = sentido horario, -1 = antihorario.
+ * @returns true si el nodo ha cambiado de orientación.
+ */
+export function rotateNode(d, node, dir = 1) {
+  if (!isRotatable(node)) return false;
+  const antes = node.rot || 0;
+  const despues = (((antes + 90 * dir) % 180) + 180) % 180;
+  if (despues === antes) return false;
+  node.rot = despues;
+  const w = node.w;
+  node.w = node.h;
+  node.h = w;
+  for (const e of (d && d.edges) || []) {
+    if (e.from === node.id) e.fromSide = SIDE_GIRO[e.fromSide] || e.fromSide;
+    if (e.to === node.id) e.toSide = SIDE_GIRO[e.toSide] || e.toSide;
+  }
+  return true;
+}
+
+/**
+ * Nombre de la orientación actual del nodo, para el inspector.
+ */
+export function orientationLabel(node) {
+  if (!isRotatable(node)) return '';
+  if (node.type === 'tiempo') {
+    // El reloj de fábrica está tumbado (sus barras planas quedan a los lados).
+    return node.rot === 90
+      ? 'Vertical (barras arriba y abajo)'
+      : 'Horizontal (barras a los lados)';
+  }
+  return node.rot === 90 ? 'Horizontal' : 'Vertical';
+}
+
+/**
+ * Medidas mínimas de un nodo en su orientación actual: la barra de paralelismo
+ * girada se acorta por el otro lado.
+ */
+export function minSize(node) {
+  const t = NODE_TYPES[node.type];
+  if (!t) return { w: 0, h: 0 };
+  if (node.rot === 90 && (node.type === 'fork' || node.type === 'join')) {
+    return { w: t.minH, h: t.minW };
+  }
+  return { w: t.minW, h: t.minH };
+}
+
+/**
+ * Tamaño que le corresponde a un nodo al estirarlo con el asidero. La barra de
+ * paralelismo **sólo se estira por su largo**: su grosor (lo que mide la barra
+ * de ancho estando vertical, o de alto estando horizontal) no cambia nunca.
+ * El resto de nodos se queda con el tamaño pedido, sin bajar de sus mínimos.
+ */
+export function resizeTo(node, w, h) {
+  const min = minSize(node);
+  if (node.type === 'fork' || node.type === 'join') {
+    return node.rot === 90
+      ? { w: Math.max(min.w, w), h: Math.max(min.h, node.h) }
+      : { w: Math.max(min.w, node.w), h: Math.max(min.h, h) };
+  }
+  return { w: Math.max(min.w, w), h: Math.max(min.h, h) };
 }
 
 /**
@@ -413,7 +508,7 @@ export function copyGroup(d, refs = []) {
   const idx = new Map(orig.map((n, i) => [n.id, i]));
   const nodes = orig.map((n) => ({
     type: n.type, x: n.x, y: n.y, w: n.w, h: n.h,
-    label: n.label, note: n.note, lane: n.lane,
+    label: n.label, note: n.note, lane: n.lane, rot: n.rot || 0,
   }));
   const edges = [];
   for (const e of d.edges) {
@@ -443,7 +538,7 @@ export function pasteGroup(d, clip, dx = 0, dy = 0) {
   const nodes = [];
   clip.nodes.forEach((t, i) => {
     const n = createNode(t.type, t.x + dx + (t.w || 0) / 2, t.y + dy + (t.h || 0) / 2, {
-      w: t.w, h: t.h, label: t.label, note: t.note,
+      w: t.w, h: t.h, label: t.label, note: t.note, rot: t.rot,
     });
     n.lane = d.lanes.length ? laneIndexAt(d, n.y + n.h / 2) : null;
     idx.set(i, n.id);
@@ -573,6 +668,9 @@ export function deserialize(text) {
       label: typeof n.label === 'string' ? n.label : defaultLabel(n.type),
       note: typeof n.note === 'string' ? n.note : '',
       lane: Number.isInteger(n.lane) ? n.lane : null,
+      // Orientación: sólo la guardan los nodos orientables y siempre vale 0
+      // (tal cual) o 90 (girado un cuarto de vuelta).
+      rot: t.rotatable && Number(n.rot) === 90 ? 90 : 0,
     };
     ids.add(node.id);
     d.nodes.push(node);
