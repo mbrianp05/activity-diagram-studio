@@ -1109,6 +1109,54 @@ dialog menu {
   padding: 0;
 }
 
+/* ---------- Carga por arrastre ---------- */
+/* Aviso a pantalla completa mientras se arrastra un archivo del sistema. No
+   captura el puntero: el `drop` lo gestiona la ventana. */
+.drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(11, 11, 12, 0.72);
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+.drop-overlay[hidden] {
+  display: none;
+}
+.drop-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  max-width: 420px;
+  padding: 30px 42px;
+  text-align: center;
+  background: var(--panel);
+  border: 1.5px dashed var(--border-2);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  animation: pop 0.14s ease-out;
+}
+.drop-card svg {
+  width: 38px;
+  height: 38px;
+  margin-bottom: 4px;
+  color: var(--muted);
+}
+.drop-card strong {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.drop-card span {
+  font-size: 12px;
+  color: var(--faint);
+}
+
 .toast {
   position: fixed;
   left: 50%;

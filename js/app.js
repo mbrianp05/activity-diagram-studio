@@ -1117,24 +1117,47 @@ class App {
     this._t = setTimeout(() => this.persist(), 400);
   }
 
+  /**
+   * Abre un diagrama desde un archivo del sistema. Lo usan tanto el botón
+   * «Abrir» como el arrastre de un `.json` sobre la app, para que ambos caminos
+   * se comporten igual.
+   */
+  async openDiagramFile(file) {
+    if (!file) return;
+    const name = file.name || "diagrama.json";
+    const isJson =
+      file.type === "application/json" ||
+      file.type === "text/json" ||
+      /\.json$/i.test(name);
+    if (!isJson) {
+      this.toast(
+        `«${name}» no es un diagrama: se esperaba un archivo .json.`,
+        true,
+      );
+      return;
+    }
+    try {
+      const d = deserialize(await file.text());
+      this.pushHistory();
+      this.diagram = d;
+      this.state.selected = [];
+      this.undoStack.pop();
+      this.commit("Abrir");
+      this.zoomFit();
+      this.toast(`Diagrama «${d.name}» cargado.`);
+    } catch (err) {
+      const msg =
+        err instanceof SyntaxError ? "el archivo no es un JSON válido" : err.message;
+      this.toast(`No se pudo abrir «${name}»: ${msg}`, true);
+    }
+  }
+
   load() {
     const file = document.getElementById("file-input");
     file.value = "";
-    file.onchange = async () => {
+    file.onchange = () => {
       const f = file.files?.[0];
-      if (!f) return;
-      try {
-        const d = deserialize(await f.text());
-        this.pushHistory();
-        this.diagram = d;
-        this.state.selected = [];
-        this.undoStack.pop();
-        this.commit("Abrir");
-        this.zoomFit();
-        this.toast(`Diagrama «${d.name}» cargado.`);
-      } catch (err) {
-        this.toast(`No se pudo abrir: ${err.message}`, true);
-      }
+      if (f) this.openDiagramFile(f);
     };
     file.click();
   }
@@ -1211,6 +1234,57 @@ class App {
     this.interaction?.drawRouteHandles();
   }
 
+  /**
+   * Arrastrar un `.json` del sistema sobre cualquier parte de la app lo abre.
+   * Las herramientas de la paleta también se arrastran, pero llevan
+   * `text/plain` en vez de `Files`: sólo estas últimas muestran el aviso y se
+   * cargan.
+   */
+  bindFileDrop() {
+    const overlay = document.getElementById("drop-overlay");
+    let depth = 0;
+    const hasFiles = (ev) =>
+      Array.from(ev.dataTransfer?.types || []).includes("Files");
+    const show = (on) => {
+      if (overlay) overlay.hidden = !on;
+    };
+    const reset = () => {
+      depth = 0;
+      show(false);
+    };
+
+    window.addEventListener("dragenter", (ev) => {
+      if (!hasFiles(ev)) return;
+      ev.preventDefault();
+      depth += 1;
+      show(true);
+    });
+    window.addEventListener("dragover", (ev) => {
+      if (!hasFiles(ev)) return;
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = "copy";
+      show(true);
+    });
+    // `dragenter`/`dragleave` se repiten al cruzar cada elemento: el contador
+    // evita que el aviso parpadee o se quede encendido.
+    window.addEventListener("dragleave", () => {
+      if (!depth) return;
+      depth = Math.max(0, depth - 1);
+      if (!depth) show(false);
+    });
+    window.addEventListener("drop", (ev) => {
+      reset();
+      if (!hasFiles(ev)) return;
+      ev.preventDefault();
+      const file = ev.dataTransfer.files?.[0];
+      if (file) this.openDiagramFile(file);
+    });
+    // Cancelar el gesto (Esc) o salir de la ventana no siempre dispara `drop`:
+    // el aviso se retira también al terminar el arrastre o perder el foco.
+    window.addEventListener("dragend", reset);
+    window.addEventListener("blur", reset);
+  }
+
   bindUi() {
     for (const btn of document.querySelectorAll("#tools .tool[data-tool]")) {
       const tool = btn.dataset.tool;
@@ -1237,6 +1311,7 @@ class App {
       const w = this.interaction.toWorld(e.clientX, e.clientY);
       this.interaction.placeNode(tool, w);
     });
+    this.bindFileDrop();
 
     document.getElementById("btn-new").addEventListener("click", () => {
       if (

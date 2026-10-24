@@ -199,6 +199,19 @@
     </form>
   </dialog>
 
+  <div id="drop-overlay" class="drop-overlay" hidden aria-hidden="true">
+    <div class="drop-card">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
+        stroke-linejoin="round">
+        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+        <path d="M14 3v5h5" />
+        <path d="M12 11v5m0 0l-2.5-2.5M12 16l2.5-2.5" />
+      </svg>
+      <strong>Suelta el diagrama para abrirlo</strong>
+      <span>Archivos .json exportados desde Activity Diagram Studio</span>
+    </div>
+  </div>
+
   <div id="toast" class="toast" hidden></div>
 
   <script type="module" src="./js/app.js"></script>
