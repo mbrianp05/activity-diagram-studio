@@ -1222,6 +1222,9 @@ console.log('\n24. Orientación de los nodos girables (fork, join y tiempo)');
   check('girada 90° la barra queda horizontal',
     barra.rot === 90 && barra.w > barra.h && barra.w === 136 && barra.h === 12,
     `${barra.w}x${barra.h} rot=${barra.rot}`);
+  check('la barra gira sobre su centro y no se va de sitio',
+    barra.x + barra.w / 2 === 300 && barra.y + barra.h / 2 === 300,
+    `centro=${barra.x + barra.w / 2},${barra.y + barra.h / 2}`);
   check('girada, la barra se conecta por arriba y por abajo',
     nodeSides(barra).join(',') === 'top,bottom'
     && Object.keys(anchors(barra)).join(',') === 'top,bottom', nodeSides(barra).join(','));
@@ -1233,8 +1236,8 @@ console.log('\n24. Orientación de los nodos girables (fork, join y tiempo)');
 
   rotateNode(g, barra, -1);
   check('girar dos veces vuelve a la posición de partida',
-    barra.rot === 0 && barra.w === 12 && barra.h === 136,
-    `${barra.w}x${barra.h} rot=${barra.rot}`);
+    barra.rot === 0 && barra.w === 12 && barra.h === 136 && barra.x === 294 && barra.y === 232,
+    `${barra.w}x${barra.h} rot=${barra.rot} en ${barra.x},${barra.y}`);
 
   // El reloj de arena: es cuadrado, así que sólo cambia la figura.
   check('el reloj empieza con las barras a los lados',

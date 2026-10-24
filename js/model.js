@@ -135,10 +135,10 @@ export function isRotatable(node) {
 const SIDE_GIRO = { left: 'top', right: 'bottom', top: 'left', bottom: 'right' };
 
 /**
- * Gira el nodo 90°. Sus medidas se intercambian (la caja sigue siendo la del
- * nodo ya girado) y las bolitas de los flujos pasan al lado equivalente
- * (izquierda<->arriba, derecha<->abajo) para que la flecha siga entrando y
- * saliendo por el mismo sitio relativo.
+ * Gira el nodo 90° **sobre su centro**: el nodo se queda donde está y sólo
+ * cambia de forma. Sus medidas se intercambian y las bolitas de los flujos
+ * pasan al lado equivalente (izquierda<->arriba, derecha<->abajo) para que la
+ * flecha siga entrando y saliendo por el mismo sitio relativo.
  *
  * Sólo hay dos orientaciones: la de fábrica (0) y la girada (90). Como estas
  * figuras son simétricas respecto de su centro, girar dos veces vuelve al
@@ -152,8 +152,13 @@ export function rotateNode(d, node, dir = 1) {
   const despues = (((antes + 90 * dir) % 180) + 180) % 180;
   if (despues === antes) return false;
   node.rot = despues;
+  // Al intercambiarse ancho y alto, se compensa la esquina para que el centro
+  // no se mueva (antes giraba alrededor de la esquina superior izquierda).
   const w = node.w;
-  node.w = node.h;
+  const h = node.h;
+  node.x += (w - h) / 2;
+  node.y += (h - w) / 2;
+  node.w = h;
   node.h = w;
   for (const e of (d && d.edges) || []) {
     if (e.from === node.id) e.fromSide = SIDE_GIRO[e.fromSide] || e.fromSide;
