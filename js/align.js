@@ -78,13 +78,27 @@ const GUIDE_PAD = 16;
  * @returns el desplazamiento a sumar (0 si no hay nada a tiro)
  */
 export function snapLine(v, lineas, tol = 6) {
+  const hit = nearestLine(v, lineas, tol);
+  return hit ? hit.d : 0;
+}
+
+/**
+ * Igual que `snapLine`, pero devuelve también la línea cogida y el nodo del que
+ * sale, para poder dibujar la guía mientras el usuario traza o mueve un punto
+ * de giro. `d` es lo que hay que sumar a `v` para caer justo en la línea.
+ * @returns {{v:number, d:number, node?:object}|null}
+ */
+export function nearestLine(v, lineas, tol = 6) {
   let mejor = null;
   for (const t of lineas || []) {
-    const d = (typeof t === 'number' ? t : t.v) - v;
+    const tv = typeof t === 'number' ? t : t.v;
+    const d = tv - v;
     if (Math.abs(d) > tol) continue;
-    if (!mejor || Math.abs(d) < Math.abs(mejor)) mejor = d;
+    if (!mejor || Math.abs(d) < Math.abs(mejor.d)) {
+      mejor = { v: tv, d, node: typeof t === 'number' ? null : t.node };
+    }
   }
-  return mejor || 0;
+  return mejor;
 }
 
 /**

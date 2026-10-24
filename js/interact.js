@@ -38,7 +38,13 @@ import {
   nearestOnPolyline,
 } from "./routing.js";
 import { LANE_HEADER } from "./render.js";
-import { snapMove, snapSize, unionBox } from "./align.js";
+import {
+  snapMove,
+  snapSize,
+  unionBox,
+  alignTargets,
+  nearestLine,
+} from "./align.js";
 
 const NS = "http://www.w3.org/2000/svg";
 const GRID = 8;
@@ -489,7 +495,10 @@ export class Interaction {
       tip: null,
       hover: null,
     };
-    this.tempEdge = svgEl("path", { class: "temp-edge" });
+    this.tempEdge = svgEl("path", {
+      class: "temp-edge",
+      "marker-end": "url(#arrow-temp)",
+    });
     this.overlay.appendChild(this.tempEdge);
     this.app.select({ type: "node", id: from });
     this.drawRouteHandles();
@@ -584,6 +593,60 @@ export class Interaction {
     this.drawTempEdge(w);
   }
 
+  /**
+   * Engancha el punto guía a las líneas de los nodos (borde o centro) en el eje
+   * en el que se mueve el tramo y dibuja la guía para que se vea con qué se va a
+   * alinear el próximo punto de giro. El tramo nace del último punto de giro
+   * fijado (`base`), no del nodo de origen.
+   */
+  snapGuide(base, cursor, axis) {
+    const refs = alignTargets(this.app.diagram.nodes);
+    const tol = GUIDE_PX / (this.app.diagram.view.k || 1);
+    const enX = axis === "x";
+    const hit = nearestLine(
+      enX ? cursor.x : cursor.y,
+      enX ? refs.xs : refs.ys,
+      tol,
+    );
+    const out = { x: cursor.x, y: cursor.y };
+    if (!hit) {
+      this.clearAlignGuides();
+      return out;
+    }
+    if (enX) out.x = hit.v;
+    else out.y = hit.v;
+    this.drawAlignGuides([this.guideLine(axis, hit, base, out)]);
+    return out;
+  }
+
+  /** Línea de guía que corresponde a una coordenada enganchada a un nodo. */
+  guideLine(axis, hit, base, tip) {
+    const pad = 16;
+    const n = hit.node;
+    if (axis === "x") {
+      const y1 = Math.min(base.y, tip.y, n ? n.y : tip.y);
+      const y2 = Math.max(base.y, tip.y, n ? n.y + n.h : tip.y);
+      return { axis, value: hit.v, from: y1 - pad, to: y2 + pad };
+    }
+    const x1 = Math.min(base.x, tip.x, n ? n.x : tip.x);
+    const x2 = Math.max(base.x, tip.x, n ? n.x + n.w : tip.x);
+    return { axis, value: hit.v, from: x1 - pad, to: x2 + pad };
+  }
+
+  /** Engancha un punto de giro a las líneas de los nodos en los dos ejes. */
+  snapRoutePoint(p) {
+    const refs = alignTargets(this.app.diagram.nodes);
+    const tol = GUIDE_PX / (this.app.diagram.view.k || 1);
+    const hx = nearestLine(p.x, refs.xs, tol);
+    const hy = nearestLine(p.y, refs.ys, tol);
+    const out = { x: hx ? hx.v : p.x, y: hy ? hy.v : p.y };
+    const guias = [];
+    if (hx) guias.push(this.guideLine("x", hx, out, out));
+    if (hy) guias.push(this.guideLine("y", hy, out, out));
+    this.drawAlignGuides(guias);
+    return out;
+  }
+
   /** Fija el punto guiado actual: a partir de aquí el trazo cambia de dirección. */
   addRoutePoint() {
     const r = this.route;
@@ -592,7 +655,12 @@ export class Interaction {
     const last = r.way[r.way.length - 1];
     if (last && Math.abs(last.x - p.x) < 1 && Math.abs(last.y - p.y) < 1)
       return;
-    r.way.push({ x: Math.round(p.x), y: Math.round(p.y) });
+    // Se guarda tal cual: el punto ya viene enganchado a rejilla o a las líneas
+    // de los nodos, y redondearlo otra vez rompería esa alineación.
+    r.way.push({ x: p.x, y: p.y });
+    // El giro queda fijado: el siguiente tramo vuelve a orientarse según el
+    // cursor en vez de arrastrar el eje anterior.
+    r.axis = null;
     this.drawRouteHandles();
     if (this.last) this.drawTempEdge();
   }
@@ -610,6 +678,7 @@ export class Interaction {
     this.route = null;
     this.clearTempEdge();
     this.clearPortHints();
+    this.clearAlignGuides();
     this.drawRouteHandles();
   }
 
@@ -869,8 +938,13 @@ export class Interaction {
       if (!edge || !edge.way[d.index]) return;
       d.moved = true;
       const step = this.snapPoint(w, e.altKey);
+      // El punto de giro se engancha a las líneas de los nodos igual que un nodo
+      // al arrastrarse: así el tramo queda a escuadra con los bordes y centros.
+      // Alt lo deja libre (ni rejilla ni guías).
+      if (e.altKey) this.clearAlignGuides();
+      else Object.assign(step, this.snapRoutePoint(step));
       edge.way[d.index] = avoidNodes(
-        { x: Math.round(step.x), y: Math.round(step.y) },
+        { x: step.x, y: step.y },
         this.app.diagram.nodes,
       );
       this.app.refresh();
@@ -1007,7 +1081,9 @@ export class Interaction {
       destino ? anchorFor(tmp, fake, geo.sides.to, false) : null,
     );
     if (destino) {
-      // Con destino encima: la geometría definitiva, tal cual quedará.
+      // Con destino encima: la geometría definitiva, tal cual quedará. Ya no hay
+      // punto guía que enganchar, así que la guía desaparece.
+      this.clearAlignGuides();
       this.tempEdge.setAttribute("d", edgePath(geo));
       return;
     }
@@ -1016,20 +1092,33 @@ export class Interaction {
     if (!ancla) return;
     const n0 = sideNormal(geo.sides.from);
     const p0 = { x: ancla.x + n0.x * 1.5, y: ancla.y + n0.y * 1.5 };
-    const cursor = w || { x: r.tip?.x ?? p0.x, y: r.tip?.y ?? p0.y };
+    const raw = w || (this.last
+      ? this.toWorld(this.last.x, this.last.y)
+      : { x: r.tip?.x ?? p0.x, y: r.tip?.y ?? p0.y });
+    // La guía se calcula desde el último punto de giro ya fijado (o desde el
+    // ancla de salida si no hay ninguno): el tramo nuevo nace ahí, no en el
+    // nodo de origen.
     const base = r.way.length ? r.way[r.way.length - 1] : p0;
     // El primer tramo sale perpendicular al lado del nodo; a partir de ahí el
     // cursor manda en el eje elegido (cada giro lo fija el usuario con un clic).
-    const axis = guideAxis(base, cursor, r.axis);
+    const axis = guideAxis(base, raw, r.axis);
     r.axis = axis;
+    // El punto que se fija al clicar se engancha a los bordes y centros de los
+    // nodos, y la guía se dibuja para que se vea con qué se está alineando.
+    const cursor = this.snapGuide(base, raw, axis);
     const tip = r.way.length
       ? guidePoint(base, cursor, axis)
       : exitGuide(p0, n0, axis, cursor);
-    // La flecha no atraviesa nodos: la punta se detiene contra su cara.
-    const pts = wallLimit(
-      userRouteTip(p0, n0, r.way, tip),
+    // La flecha no atraviesa nodos: la punta se detiene contra su cara. El nodo
+    // de origen también cuenta (con margen 0, porque la salida nace a 1,5 px
+    // del lado): así el trazo no puede volver a cruzarlo al girar.
+    const origen = this.app.diagram.nodes.find((n) => n.id === r.from);
+    let pts = userRouteTip(p0, n0, r.way, tip);
+    pts = wallLimit(
+      pts,
       this.app.diagram.nodes.filter((n) => n.id !== r.from),
     );
+    if (origen) pts = wallLimit(pts, [origen], 0);
     r.tip = pts[pts.length - 1];
     this.tempEdge.setAttribute(
       "d",

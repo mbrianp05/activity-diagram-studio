@@ -231,8 +231,17 @@ export function edgeGeometry(d, edge) {
   const obst = obstaclesOf(d, edge);
   const pts = way.length
     ? userRoute(p0, n0, p3, n1, way, obst)
-    : linkRoute(p0, n0, p3, n1, obst);
-  return { p1: p0, p2: p3, pts, mid: polyMid(pts), sides };
+    : linkRoute(p0, n0, p3, n1, obst, { from, to });
+  // La flecha no atraviesa nodos ni en el trazo en curso ni una vez confirmado:
+  // el recorrido final se detiene en la primera pared que encontraría. El resto
+  // de nodos se aparta WALL_MARGIN; el origen y el destino, margen 0, porque la
+  // flecha nace y muere a unos píxeles de su cara y con margen positivo se
+  // recortaría a sí misma en el primer tramo.
+  const otros = (d.nodes || []).filter((n) => n.id !== from.id && n.id !== to.id);
+  let final = wallLimit(pts, otros);
+  final = wallLimit(final, [from], 0);
+  final = wallLimit(final, [to], 0);
+  return { p1: p0, p2: p3, pts: final, mid: polyMid(final), sides };
 }
 
 /**
@@ -266,10 +275,171 @@ export function userRoute(p0, n0, p3, n1, way, obst = []) {
  * entrada. Es la flecha «por defecto»; si sale en paralelo al lado de un nodo,
  * el tramo se separa EXIT_GAP para no dibujarse encima del borde, y la llegada
  * siempre entra perpendicular (`withEntry`).
+ *
+ * Cuando se conocen los dos extremos (`opts.from` / `opts.to`) la L se elige
+ * mirando también sus figuras: si las dos formas de la L atraviesan el nodo de
+ * origen o el de destino, se prueba una S por un pasillo libre (`autoRoute`).
+ * Sin esos datos el resultado es la L de siempre (lo usan las pruebas de la
+ * geometría básica).
  */
-export function linkRoute(p0, n0, p3, n1, obst = []) {
+export function linkRoute(p0, n0, p3, n1, obst = [], opts = null) {
   const body = orthogonalize([p0, exitStub(p0, n0, p3)]);
+  if (opts && (opts.from || opts.to)) {
+    return autoRoute(p0, n0, p3, n1, obst, opts.from, opts.to);
+  }
   return withEntry(body, p3, n1, obst);
+}
+
+/**
+ * Trazado por defecto de una flecha sin puntos de giro. Prueba las dos L
+ * posibles (entrar en horizontal o en vertical primero) y, si ambas chocan con
+ * el origen o el destino, una S que pasa por un pasillo libre entre las dos
+ * figuras. Elige la primera forma que no atraviesa ningún nodo; a igualdad,
+ * la de menos codos y más corta.
+ *
+ * Así una flecha que sale por abajo hacia un nodo que está arriba y a la
+ * derecha no puede «volver a entrar» en su propio nodo de origen: la L que lo
+ * hacía pierde frente a la S que lo rodea.
+ *
+ * @param obst nodos intermedios (sin origen ni destino)
+ * @param from,to nodos de los dos extremos (para conocer sus cajas)
+ */
+export function autoRoute(p0, n0, p3, n1, obst = [], from = null, to = null) {
+  const body = orthogonalize([p0, exitStub(p0, n0, p3)]);
+  const prev = body[body.length - 1] || p3;
+  const rects = [from, to, ...(obst || [])].filter(Boolean);
+  const candidatas = [];
+
+  // Las dos L: acercarse al destino en horizontal o en vertical primero.
+  for (const variante of ['a', 'b']) {
+    candidatas.push(dedupe([...body, ...entryTail(prev, p3, n1, variante)]));
+  }
+
+  // Sólo tiene sentido la S cuando los dos extremos salen/entran por caras
+  // paralelas: el pasillo va en el eje perpendicular.
+  if (n0.x === 0 && n1.x === 0) {
+    for (const xc of pasillosX(from, to, p0, p3)) {
+      candidatas.push(zRouteV(p0, prev, p3, n1, xc));
+    }
+  }
+  if (n0.y === 0 && n1.y === 0) {
+    for (const yc of pasillosY(from, to, p0, p3)) {
+      candidatas.push(zRouteH(p0, prev, p3, n1, yc));
+    }
+  }
+
+  let mejor = null;
+  for (const pts of candidatas) {
+    const score = routeScore(pts, rects, from, to);
+    if (!mejor || score < mejor.score) mejor = { pts, score };
+  }
+  return mejor ? mejor.pts : body;
+}
+
+/** S con dos codos cuando la salida y la entrada son verticales. */
+function zRouteV(p0, prev, p3, n1, xc) {
+  const ey = p3.y + n1.y * EXIT_GAP;
+  return dedupe([
+    { x: p0.x, y: p0.y },
+    { x: prev.x, y: prev.y },
+    { x: xc, y: prev.y },
+    { x: xc, y: ey },
+    { x: p3.x, y: ey },
+    { x: p3.x, y: p3.y },
+  ]);
+}
+
+/** S con dos codos cuando la salida y la entrada son horizontales. */
+function zRouteH(p0, prev, p3, n1, yc) {
+  const ex = p3.x + n1.x * EXIT_GAP;
+  return dedupe([
+    { x: p0.x, y: p0.y },
+    { x: prev.x, y: prev.y },
+    { x: prev.x, y: yc },
+    { x: ex, y: yc },
+    { x: ex, y: p3.y },
+    { x: p3.x, y: p3.y },
+  ]);
+}
+
+/**
+ * Pasillos verticales por los que puede bajar/subir la S: los bordes de las dos
+ * figuras separados EXIT_GAP, el hueco entre ellas y las propias líneas de los
+ * anclajes.
+ */
+function pasillosX(from, to, p0, p3) {
+  const out = [];
+  const push = (v) => {
+    if (!Number.isFinite(v)) return;
+    if (out.some((q) => Math.abs(q - v) <= ALIGN)) return;
+    out.push(v);
+  };
+  if (from) {
+    push(from.x - EXIT_GAP);
+    push(from.x + from.w + EXIT_GAP);
+  }
+  if (to) {
+    push(to.x - EXIT_GAP);
+    push(to.x + to.w + EXIT_GAP);
+  }
+  if (from && to) {
+    if (from.x + from.w < to.x) push((from.x + from.w + to.x) / 2);
+    if (to.x + to.w < from.x) push((to.x + to.w + from.x) / 2);
+  }
+  push(p0.x);
+  push(p3.x);
+  const minX = Math.min(from ? from.x : p0.x, to ? to.x : p3.x);
+  const maxX = Math.max(from ? from.x + from.w : p0.x, to ? to.x + to.w : p3.x);
+  push(minX - EXIT_GAP);
+  push(maxX + EXIT_GAP);
+  return out;
+}
+
+/** Lo mismo que `pasillosX`, en horizontal. */
+function pasillosY(from, to, p0, p3) {
+  const out = [];
+  const push = (v) => {
+    if (!Number.isFinite(v)) return;
+    if (out.some((q) => Math.abs(q - v) <= ALIGN)) return;
+    out.push(v);
+  };
+  if (from) {
+    push(from.y - EXIT_GAP);
+    push(from.y + from.h + EXIT_GAP);
+  }
+  if (to) {
+    push(to.y - EXIT_GAP);
+    push(to.y + to.h + EXIT_GAP);
+  }
+  if (from && to) {
+    if (from.y + from.h < to.y) push((from.y + from.h + to.y) / 2);
+    if (to.y + to.h < from.y) push((to.y + to.h + from.y) / 2);
+  }
+  push(p0.y);
+  push(p3.y);
+  const minY = Math.min(from ? from.y : p0.y, to ? to.y : p3.y);
+  const maxY = Math.max(from ? from.y + from.h : p0.y, to ? to.y + to.h : p3.y);
+  push(minY - EXIT_GAP);
+  push(maxY + EXIT_GAP);
+  return out;
+}
+
+/**
+ * Puntuación de una candidata: atravesar un nodo pesa muchísimo (el origen
+ * todavía más: una flecha nunca puede cruzarse a sí misma), y entre las que
+ * están limpias gana la de menos codos y, después, la más corta.
+ */
+function routeScore(pts, rects, from, to) {
+  let peso = 0;
+  for (const r of rects) {
+    if (!cruzaNodos(pts, [r], 0)) continue;
+    peso += r === from ? 1e6 : r === to ? 1e5 : 1e3;
+  }
+  let largo = 0;
+  for (let i = 1; i < pts.length; i += 1) {
+    largo += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+  }
+  return peso * 1e6 + (pts.length - 2) * 1e4 + largo;
 }
 
 /**
@@ -306,8 +476,11 @@ export function exitStub(p, n, target) {
   const dy = target.y - p.y;
   const d = dx * n.x + dy * n.y;               // distancia por la normal
   const lado = Math.abs(dx * n.y + dy * n.x);  // distancia a lo largo del lado
+  // El primer tramo sale por la normal: si el objetivo no está en la dirección
+  // de salida (o está justo en el ancla), igual hay que salir del nodo antes de
+  // poder girar — nunca se deja el tramo pegado al borde con longitud 0.
   const largo = lado <= ALIGN
-    ? Math.max(0, Math.min(EXIT_GAP, d))
+    ? Math.max(0, Math.min(EXIT_GAP, d > 0 ? d : EXIT_GAP))
     : (d > 0 ? Math.min(EXIT_GAP, d) : EXIT_GAP);
   return { x: p.x + n.x * largo, y: p.y + n.y * largo };
 }
@@ -351,13 +524,11 @@ export function exitGuide(p0, n0, axis, cursor) {
   const tip = axis === 'x'
     ? { x: cursor.x, y: p0.y + n0.y * d }
     : { x: p0.x + n0.x * d, y: cursor.y };
-  return haciaFuera(tip, p0, n0);
-}
-
-/** ¿Va el punto hacia delante (por la normal) o hacia dentro del nodo? */
-function haciaFuera(p, base, n) {
-  const d = (p.x - base.x) * n.x + (p.y - base.y) * n.y;
-  return d >= 0 ? p : { x: base.x, y: base.y };
+  // El guiado puede apuntar hacia dentro del nodo (por ejemplo: salir por abajo y
+  // dirigirse a un destino que está más arriba). El primer tramo sale por la
+  // normal (`exitStub`) y son los muros los que detienen la punta del trazo, no
+  // el recalculo del punto guiado.
+  return tip;
 }
 
 /** ¿El eje del primer tramo discurre paralelo al lado de salida? */
@@ -480,69 +651,119 @@ function diagonalToca(a, b, r, margen) {
 /**
  * ¿Alguno de los tramos del recorrido atraviesa algún nodo?
  */
-export function cruzaNodos(pts, rects = []) {
+export function cruzaNodos(pts, rects = [], margen = WALL_MARGIN) {
   for (let i = 1; i < (pts || []).length; i += 1) {
     for (const r of rects || []) {
-      if (segmentCrosses(pts[i - 1], pts[i], r)) return true;
+      if (segmentCrosses(pts[i - 1], pts[i], r, margen)) return true;
     }
   }
   return false;
 }
 
 /**
- * Recorta la punta del recorrido para que **no atraviese nodos**: el trazo se
- * detiene contra la cara del nodo y se queda ahí. Si el nodo queda detrás del
- * punto de partida, la punta no avanza (la flecha no se da la vuelta).
+ * Recorta el recorrido para que **no atraviese nodos**: se queda con el trozo
+ * que llega hasta la primera cara que encontraría. No se mira sólo el último
+ * tramo: un giro ya fijado puede llevar el trazo contra un nodo antes de la
+ * punta, y entonces la punta se para ahí. El primer punto siempre se conserva
+ * (es el ancla de salida, ya fuera del nodo).
  *
- * Sólo se mira el último tramo: los anteriores los ha dibujado el usuario y
- * son suyos.
+ * Se usa mientras se traza; lo que el usuario ve es exactamente lo que puede
+ * clicar. Los tramos ya confirmados no se reescriben: si un punto de giro
+ * quedó mal, se arrastra.
  */
 export function wallLimit(pts, rects = [], margen = WALL_MARGIN) {
   if (!pts || pts.length < 2 || !rects || !rects.length) return pts;
-  const a = pts[pts.length - 2];
-  const b = pts[pts.length - 1];
-  const nuevo = limiteTramo(a, b, rects, margen);
-  if (!nuevo || (nuevo.x === b.x && nuevo.y === b.y)) return pts;
-  const out = pts.slice(0, -1);
-  out.push(nuevo);
+  const out = [{ x: pts[0].x, y: pts[0].y }];
+  for (let i = 1; i < pts.length; i += 1) {
+    const a = out[out.length - 1];
+    const b = pts[i];
+    const choque = primerChoque(a, b, rects, margen);
+    if (choque) {
+      if (Math.hypot(choque.x - a.x, choque.y - a.y) > ALIGN) out.push(choque);
+      return out;
+    }
+    out.push({ x: b.x, y: b.y });
+  }
   return out;
 }
 
-/** Punto hasta el que puede avanzar el tramo `a`→`b` sin tocar ningún nodo. */
-function limiteTramo(a, b, rects, margen) {
-  if (Math.abs(a.y - b.y) <= ALIGN) {
-    // Tramo horizontal.
-    let x = b.x;
-    for (const r of rects) {
-      if (a.y <= r.y - margen || a.y >= r.y + r.h + margen) continue;
-      if (b.x > a.x) {
-        // Hacia la derecha: para antes del borde izquierdo del nodo.
-        if (r.x + r.w + margen <= a.x || r.x - margen >= b.x) continue;
-        x = Math.max(a.x, Math.min(x, r.x - margen));
-      } else if (b.x < a.x) {
-        // Hacia la izquierda: para antes del borde derecho del nodo.
-        if (r.x - margen >= a.x || r.x + r.w + margen <= b.x) continue;
-        x = Math.min(a.x, Math.max(x, r.x + r.w + margen));
-      }
-    }
-    return { x, y: b.y };
+/**
+ * Primer punto del tramo `a`→`b` que toca algún rectángulo. Devuelve `null` si
+ * el tramo está libre. Los tramos ortogonales se resuelven con una comparación
+ * de bandas; los oblicuos (no deberían llegar aquí) con Liang-Barsky.
+ */
+function primerChoque(a, b, rects, margen) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const largo = Math.hypot(dx, dy);
+  if (largo <= ALIGN) return null;
+  let t = null;
+  for (const r of rects) {
+    const tRect = entradaRect(a, b, r, margen);
+    if (tRect !== null && (t === null || tRect < t)) t = tRect;
   }
-  if (Math.abs(a.x - b.x) <= ALIGN) {
-    // Tramo vertical.
-    let y = b.y;
-    for (const r of rects) {
-      if (a.x <= r.x - margen || a.x >= r.x + r.w + margen) continue;
-      if (b.y > a.y) {
-        if (r.y + r.h + margen <= a.y || r.y - margen >= b.y) continue;
-        y = Math.max(a.y, Math.min(y, r.y - margen));
-      } else if (b.y < a.y) {
-        if (r.y - margen >= a.y || r.y + r.h + margen <= b.y) continue;
-        y = Math.min(a.y, Math.max(y, r.y + r.h + margen));
-      }
+  if (t === null) return null;
+  return { x: a.x + dx * t, y: a.y + dy * t };
+}
+
+/**
+ * Instante `t` (0..1) en el que el tramo `a`→`b` entra en el rectángulo, o
+ * `null` si no lo toca. Si el punto de partida ya está dentro, devuelve 0.
+ */
+function entradaRect(a, b, r, margen) {
+  const x1 = r.x - margen;
+  const x2 = r.x + r.w + margen;
+  const y1 = r.y - margen;
+  const y2 = r.y + r.h + margen;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+
+  if (a.x > x1 && a.x < x2 && a.y > y1 && a.y < y2) return 0;
+
+  if (Math.abs(dy) <= ALIGN) {
+    // Tramo horizontal: la banda vertical decide si pasa por el alto.
+    if (a.y <= y1 || a.y >= y2) return null;
+    const x = dx > 0 ? x1 : x2;
+    if (dx > 0 ? (x >= a.x && x <= b.x) : (x <= a.x && x >= b.x)) {
+      return Math.abs(dx) > ALIGN ? (x - a.x) / dx : null;
     }
-    return { x: b.x, y };
+    return null;
   }
-  return b;
+  if (Math.abs(dx) <= ALIGN) {
+    // Tramo vertical: la banda horizontal decide si pasa por el ancho.
+    if (a.x <= x1 || a.x >= x2) return null;
+    const y = dy > 0 ? y1 : y2;
+    if (dy > 0 ? (y >= a.y && y <= b.y) : (y <= a.y && y >= b.y)) {
+      return Math.abs(dy) > ALIGN ? (y - a.y) / dy : null;
+    }
+    return null;
+  }
+  return entradaOblicua(a, b, x1, x2, y1, y2);
+}
+
+/** Liang-Barsky: primer `t` del segmento dentro del rectángulo, o `null`. */
+function entradaOblicua(a, b, x1, x2, y1, y2) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  let t0 = 0;
+  let t1 = 1;
+  const p = [-dx, dx, -dy, dy];
+  const q = [a.x - x1, x2 - a.x, a.y - y1, y2 - a.y];
+  for (let i = 0; i < 4; i += 1) {
+    if (p[i] === 0) {
+      if (q[i] < 0) return null;
+      continue;
+    }
+    const t = q[i] / p[i];
+    if (p[i] < 0) {
+      if (t > t1) return null;
+      if (t > t0) t0 = t;
+    } else {
+      if (t < t0) return null;
+      if (t < t1) t1 = t;
+    }
+  }
+  return t0;
 }
 
 /**

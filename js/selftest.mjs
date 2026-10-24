@@ -7,7 +7,8 @@ import { validate, summary } from './validate.js';
 import { createSim, start, step, evaluate } from './simulate.js';
 import {
   anchorFor, anchors, pickSides, nodeSides, edgeGeometry, labelSpot, guidePoint, avoidNodes,
-  nearestOnPolyline, sideNear, userRouteTip, userRoute, exitGuide, linkRoute, EXIT_GAP, END_RING_GAP, ARROW_GAP,
+  nearestOnPolyline, sideNear, userRouteTip, userRoute, exitGuide, linkRoute, wallLimit,
+  EXIT_GAP, END_RING_GAP, ARROW_GAP, WALL_MARGIN,
 } from './routing.js';
 import { unionBox, alignTargets, snapMove, snapSize, snapLine, planAlign, planDistribute } from './align.js';
 import { shapeAttrs, tridentePuntos, ACTIVITY_RX } from './render.js';
@@ -793,6 +794,49 @@ console.log('\n17e. La llegada entra perpendicular al lado del nodo');
   check('con el margen de llegada sobre el ancla',
     Math.abs(antes.x - (geo.p2.x - EXIT_GAP)) < 0.01, JSON.stringify(geo));
   check('sin atravesar el nodo destino', !cruzaNodo(geo.pts, destino), JSON.stringify(geo.pts));
+}
+
+console.log('\n17f. La punta del trazo se para en la cara del nodo');
+{
+  const origen = { id: 'o', x: 300, y: 200, w: 160, h: 80 };
+  const p0 = { x: origen.x + origen.w + 1.5, y: origen.y + origen.h / 2 };
+  const derecha = { x: 1, y: 0 };
+
+  // El usuario sale por la derecha y mueve el cursor hacia la izquierda: el
+  // trazo no puede volver a entrar en el propio nodo de origen.
+  const atras = wallLimit(userRouteTip(p0, derecha, [], { x: 100, y: p0.y }), [origen], 0);
+  const punta = atras[atras.length - 1];
+  check('se para contra la cara derecha del origen',
+    Math.abs(punta.x - (origen.x + origen.w)) < 0.01 && punta.y === p0.y,
+    JSON.stringify(atras));
+  check('no atraviesa el origen', !cruzaNodo(atras, origen, 0), JSON.stringify(atras));
+
+  // Aunque ya haya un giro fijado en el muro, el tramo siguiente tampoco entra.
+  const girado = wallLimit(
+    userRouteTip(p0, derecha, [{ x: 500, y: p0.y }], { x: 100, y: p0.y }),
+    [origen],
+    0,
+  );
+  check('un giro en el muro no abre paso al interior',
+    !cruzaNodo(girado, origen, 0), JSON.stringify(girado));
+
+  // Rodeando por debajo sí se puede pasar al otro lado del origen.
+  const rodeo = wallLimit(
+    userRouteTip(p0, derecha, [{ x: 500, y: p0.y }, { x: 500, y: 360 }], { x: 100, y: 360 }),
+    [origen],
+    0,
+  );
+  check('rodear el origen por abajo deja pasar el trazo',
+    rodeo.some((p) => p.x === 100) && !cruzaNodo(rodeo, origen, 0), JSON.stringify(rodeo));
+
+  // El recorte no se limita al último tramo: si el choque está antes del giro,
+  // la punta se queda en ese primer muro.
+  const muro = { x: 100, y: 100, w: 80, h: 80 };
+  const recortado = wallLimit([{ x: 0, y: 140 }, { x: 300, y: 140 }, { x: 300, y: 300 }], [muro]);
+  check('corta en el primer nodo que encuentra, aunque no sea el último tramo',
+    recortado.length === 2 && Math.abs(recortado[1].x - (muro.x - WALL_MARGIN)) < 0.01,
+    JSON.stringify(recortado));
+  check('y no atraviesa el nodo', !cruzaNodo(recortado, muro), JSON.stringify(recortado));
 }
 
 console.log('\n18. Copiar y pegar (portapapeles)');
