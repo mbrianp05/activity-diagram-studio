@@ -320,6 +320,48 @@ export function edgeById(d, id) { return byId(d.edges, id); }
 export function outEdges(d, id) { return d.edges.filter((e) => e.from === id); }
 export function inEdges(d, id) { return d.edges.filter((e) => e.to === id); }
 
+/**
+ * Papel real de una barra de paralelo según sus flechas, no según su tipo
+ * guardado. Una misma barra es fork o join dependiendo de lo que la conectan:
+ * - `fork`: reparte el flujo (2+ salidas y como mucho una entrada).
+ * - `join`: sincroniza ramas (2+ entradas y como mucho una salida).
+ * - `both`: hace las dos cosas (2+ entradas y 2+ salidas).
+ * - `none`: todavía no tiene flechas suficientes para ser ninguna de las dos.
+ */
+export function barRole(d, id) {
+  const ins = inEdges(d, id).length;
+  const outs = outEdges(d, id).length;
+  if (ins >= 2 && outs >= 2) return 'both';
+  if (ins >= 2) return 'join';
+  if (outs >= 2) return 'fork';
+  return 'none';
+}
+
+/**
+ * Ajusta el tipo (`fork` o `join`) de una barra al papel que le dan sus flechas.
+ * Con `both` o `none` se respeta el tipo actual: el usuario aún puede estar
+ * montando el flujo o la barra es a la vez unión y bifurcación.
+ * @returns el papel calculado, o null si el nodo no es una barra.
+ */
+export function syncBarType(d, id) {
+  const n = nodeById(d, id);
+  if (!n || (n.type !== 'fork' && n.type !== 'join')) return null;
+  const role = barRole(d, id);
+  if (role === 'fork') n.type = 'fork';
+  else if (role === 'join') n.type = 'join';
+  return role;
+}
+
+/** Sincroniza el tipo de varias barras (ignora ids repetidos o ajenos). */
+export function syncBarTypes(d, ids) {
+  for (const id of new Set(ids)) syncBarType(d, id);
+}
+
+/** Ids de las barras de paralelo del diagrama. */
+export function barIds(d) {
+  return d.nodes.filter((n) => n.type === 'fork' || n.type === 'join').map((n) => n.id);
+}
+
 export function center(n) { return { x: n.x + n.w / 2, y: n.y + n.h / 2 }; }
 
 export function bounds(d) {
@@ -524,18 +566,32 @@ export function setLaneOrientation(d, orientation) {
 export function addNode(d, node) { d.nodes.push(node); return node; }
 
 export function removeNode(d, id) {
+  // Antes de quitar las flechas, apunta las barras del otro extremo: al perder
+  // una conexión pueden dejar de ser fork/join y hay que recalcular su tipo.
+  const vecinas = d.edges
+    .filter((e) => e.from === id || e.to === id)
+    .flatMap((e) => [e.from, e.to])
+    .filter((otro) => otro !== id);
   d.nodes = d.nodes.filter((n) => n.id !== id);
   d.edges = d.edges.filter((e) => e.from !== id && e.to !== id);
+  syncBarTypes(d, vecinas);
 }
 
 export function addEdge(d, edge) {
   if (edge.from === edge.to) return null;
   if (d.edges.some((e) => e.from === edge.from && e.to === edge.to)) return null;
   d.edges.push(edge);
+  // El tipo de la barra se deriva de sus flechas: al conectar puede pasar de
+  // fork a join (o al revés).
+  syncBarTypes(d, [edge.from, edge.to]);
   return edge;
 }
 
-export function removeEdge(d, id) { d.edges = d.edges.filter((e) => e.id !== id); }
+export function removeEdge(d, id) {
+  const e = edgeById(d, id);
+  d.edges = d.edges.filter((x) => x.id !== id);
+  if (e) syncBarTypes(d, [e.from, e.to]);
+}
 
 /* ------------------------------------------------------------------ */
 /* Portapapeles: copiar y pegar grupos                                 */
@@ -773,6 +829,9 @@ export function deserialize(text) {
       way: readWay(e.way),
     });
   }
+  // Al abrir un archivo (o restaurar el historial) la barra recupera el tipo que
+  // le dan sus flechas guardadas, aunque el JSON traiga otro.
+  syncBarTypes(d, barIds(d));
   return d;
 }
 

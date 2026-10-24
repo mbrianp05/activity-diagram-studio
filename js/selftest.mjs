@@ -2,7 +2,7 @@
  * Pruebas de la lógica del diagrama (sin DOM): modelo, validación y simulación.
  * Ejecutar con:  node js/selftest.mjs
  */
-import { sampleDiagram, createNode, createEdge, createDiagram, createLane, deserialize, assignLanes, shiftLanes, swapLanes, removeLaneAt, laneMinHeight, laneTop, nodeById, NODE_TYPES, copyGroup, pasteGroup, groupBounds, freeSpot, LANE_PAD, isRotatable, rotateNode, orientationLabel, minSize, resizeTo } from './model.js';
+import { sampleDiagram, createNode, createEdge, createDiagram, createLane, deserialize, assignLanes, shiftLanes, swapLanes, removeLaneAt, laneMinHeight, laneTop, nodeById, NODE_TYPES, copyGroup, pasteGroup, groupBounds, freeSpot, LANE_PAD, isRotatable, rotateNode, orientationLabel, minSize, resizeTo, addEdge, removeEdge, barRole } from './model.js';
 import { validate, summary } from './validate.js';
 import { createSim, start, step, evaluate } from './simulate.js';
 import {
@@ -126,9 +126,68 @@ console.log('\n6. Errores de validación de gateways');
   g.nodes.push(start, fork, badJoin);
   g.edges.push(createEdge(start.id, fork.id), createEdge(fork.id, badJoin.id));
   const issues = validate(g).filter((i) => i.level === 'error').map((i) => i.msg);
-  check('join con 1 entrada -> error', issues.some((m) => m.includes('join necesita 2 o más entradas')), JSON.stringify(issues));
+  check('join con 1 entrada -> error', issues.some((m) => m.includes('barra de paralelo necesita') && m.includes('join')), JSON.stringify(issues));
   const noEnd = validate(g).some((i) => i.level === 'warn' && i.msg.includes('nodos de fin'));
   check('avisa si no hay nodo Fin', noEnd);
+}
+
+console.log('\n6b. Fork y join se deducen de las flechas (no del tipo guardado)');
+{
+  const g = createDiagram();
+  const bar = createNode('join', 600, 200, { label: 'Barra' });
+  const a = createNode('activity', 300, 100);
+  const b = createNode('activity', 300, 300);
+  const c = createNode('activity', 900, 100);
+  const d2 = createNode('activity', 900, 300);
+  g.nodes.push(bar, a, b, c, d2);
+  const ins = [a, b].map((n) => createEdge(n.id, bar.id));
+  const outs = [c, d2].map((n) => createEdge(bar.id, n.id));
+  ins.forEach((e) => addEdge(g, e));
+  check('2 entradas y 0 salidas: join', bar.type === 'join' && barRole(g, bar.id) === 'join');
+  outs.forEach((e) => addEdge(g, e));
+  check('2 entradas y 2 salidas: join + fork', barRole(g, bar.id) === 'both');
+  // Quitar una entrada deja 1 entrada y 2 salidas: pasa a fork solo.
+  removeEdge(g, ins[0].id);
+  check('al perder una entrada la barra se convierte en fork', bar.type === 'fork' && barRole(g, bar.id) === 'fork');
+  // Volver a añadirla la deja combinada; quitar una salida la vuelve join.
+  addEdge(g, ins[0]);
+  removeEdge(g, outs[0].id);
+  check('al perder una salida la barra se convierte en join', bar.type === 'join' && barRole(g, bar.id) === 'join');
+
+  // El validador usa el papel real: una barra combinada no es un error.
+  const s = createNode('start', 0, 200);
+  const fin = createNode('end', 1200, 200);
+  g.nodes.push(s, fin);
+  addEdge(g, createEdge(s.id, a.id));
+  addEdge(g, createEdge(b.id, fin.id));
+  const errores = validate(g).filter((i) => i.level === 'error' && i.nodeId === bar.id);
+  check('una barra join+fork es válida', errores.length === 0, JSON.stringify(errores));
+}
+
+console.log('\n6c. Al copiar y pegar, la barra cambia de tipo si cambian sus flechas');
+{
+  const g = createDiagram();
+  const fork = createNode('fork', 300, 200, { label: 'F' });
+  const a = createNode('activity', 700, 100);
+  const b = createNode('activity', 700, 300);
+  const extra1 = createNode('activity', 0, 50, { label: 'E1' });
+  const extra2 = createNode('activity', 0, 350, { label: 'E2' });
+  g.nodes.push(fork, a, b, extra1, extra2);
+  addEdge(g, createEdge(fork.id, a.id));
+  addEdge(g, createEdge(fork.id, b.id));
+  check('el fork original reparte', barRole(g, fork.id) === 'fork' && fork.type === 'fork');
+
+  const clip = copyGroup(g, [fork, a, b].map((n) => ({ type: 'node', id: n.id })));
+  const { nodes } = pasteGroup(g, clip, 0, 500);
+  const copia = nodes.find((n) => n.type === 'fork');
+  check('el fork copiado sigue siendo fork', !!copia && barRole(g, copia.id) === 'fork');
+  const outs = g.edges.filter((e) => e.from === copia.id);
+  // Quitar una salida y meter dos entradas: la copia pasa a join.
+  removeEdge(g, outs[0].id);
+  check('sin una salida sigue siendo fork (1 entrada, 1 salida no decide)', copia.type === 'fork');
+  addEdge(g, createEdge(extra1.id, copia.id));
+  addEdge(g, createEdge(extra2.id, copia.id));
+  check('con dos entradas y una salida la copia pasa a join', copia.type === 'join' && barRole(g, copia.id) === 'join');
 }
 
 console.log('\n7. Decisión con salidas sin etiquetar pide elección');
@@ -346,6 +405,35 @@ console.log('\n13. Nodo de objeto');
 
   const r = run(g, {});
   check('el simulador atraviesa el objeto', r.sim.finished, JSON.stringify(r.sim.log.slice(-2)));
+}
+
+console.log('\n13b. El validador no tiene en cuenta los objetos');
+{
+  const g = createDiagram();
+  const s1 = createNode('start', 100, 300);
+  const ob = createNode('objeto', 400, 300, { label: 'Pedido', note: 'pendiente' });
+  const fin = createNode('end', 700, 300);
+  // Un objeto suelto, sin ninguna flecha, tampoco debe generar avisos.
+  const suelto = createNode('objeto', 400, 600, { label: 'Suelto' });
+  g.nodes.push(s1, ob, fin, suelto);
+  g.edges.push(createEdge(s1.id, ob.id), createEdge(ob.id, fin.id));
+  const issues = validate(g);
+  check('un objeto sin flechas no genera avisos',
+    !issues.some((i) => i.nodeId === suelto.id), JSON.stringify(issues.filter((i) => i.nodeId === suelto.id)));
+  check('sus entradas y salidas no generan avisos',
+    !issues.some((i) => i.nodeId === ob.id), JSON.stringify(issues.filter((i) => i.nodeId === ob.id)));
+  check('el diagrama sigue sin errores', summary(issues).error === 0, JSON.stringify(issues.filter((i) => i.level === 'error')));
+
+  // Da igual que sólo reciba flechas o que sólo las emita: el objeto es
+  // semántico y no se le exige un flujo de entrada y salida.
+  const soloEntra = createNode('objeto', 800, 600, { label: 'Sólo recibe' });
+  const soloSale = createNode('objeto', 800, 800, { label: 'Sólo emite' });
+  g.nodes.push(soloEntra, soloSale);
+  g.edges.push(createEdge(ob.id, soloEntra.id), createEdge(soloSale.id, ob.id));
+  check('un objeto con sólo entradas no genera avisos',
+    !validate(g).some((i) => i.nodeId === soloEntra.id), JSON.stringify(validate(g).filter((i) => i.nodeId === soloEntra.id)));
+  check('un objeto con sólo salidas no genera avisos',
+    !validate(g).some((i) => i.nodeId === soloSale.id), JSON.stringify(validate(g).filter((i) => i.nodeId === soloSale.id)));
 }
 
 console.log('\n14. Carriles: los nodos no cambian de carril');

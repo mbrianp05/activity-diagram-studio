@@ -5,9 +5,14 @@
  *  - start / activity / note: consumen 1 token y lo emiten por cada salida.
  *  - decision: consume 1 token y toma las salidas cuya condición sea verdadera
  *    (o la única salida no etiquetada).
- *  - fork: consume 1 token y emite por todas las salidas (paralelo).
- *  - join: espera un token por cada flujo de entrada; entonces emite 1 solo.
+ *  - barra de paralelo: su papel lo deciden las flechas (`barRole`), no el tipo
+ *    guardado. Con 2+ entradas sincroniza (join); con 2+ salidas reparte
+ *    (fork); con ambas cosas hace las dos.
  */
+import { barRole } from './model.js';
+
+/** ¿El nodo es una barra de paralelo? */
+const isBar = (n) => n && (n.type === 'fork' || n.type === 'join');
 
 export function createSim(d) {
   return {
@@ -136,7 +141,10 @@ function emit(d, sim, fromId, edges) {
     sim.activeEdges.add(e.id);
     const to = e.to;
     const target = d.nodes.find((n) => n.id === to);
-    if (target && target.type === 'join') {
+    const papel = isBar(target) ? barRole(d, target.id) : null;
+    // Una barra con 2+ entradas espera una llegada por cada una, aunque su tipo
+    // guardado sea fork (barra combinada join + fork).
+    if (target && (papel === 'join' || papel === 'both')) {
       if (!sim.arrivals.has(to)) sim.arrivals.set(to, new Set());
       sim.arrivals.get(to).add(e.id);
     } else {
@@ -169,13 +177,20 @@ export function step(d, sim, choice = null) {
     const node = d.nodes.find((n) => n.id === id);
     if (!node) continue;
 
-    // Join: sólo avanza cuando llegó un token por cada entrada.
-    if (node.type === 'join') {
+    const bar = isBar(node);
+    const papel = bar ? barRole(d, node.id) : null;
+
+    // Join (o barra combinada): sólo avanza cuando llegó un token por cada entrada.
+    if (bar && (papel === 'join' || papel === 'both')) {
       const { have, need } = joinProgress(d, sim, id);
       if (have < need) { enqueue(sim, id); continue; }
       sim.arrivals.delete(id);
-      emit(d, sim, id, d.edges.filter((e) => e.from === id));
+      const outs = d.edges.filter((e) => e.from === id);
+      emit(d, sim, id, outs);
       sim.log.push({ type: 'join', node: node.label, text: `Join «${node.label}»: sincronizadas ${have} ramas → continúa.` });
+      if (outs.length >= 2) {
+        sim.log.push({ type: 'fork', node: node.label, text: `Fork «${node.label}»: ${outs.length} ramas en paralelo.` });
+      }
       markActive(sim, node);
       return sim;
     }
@@ -240,9 +255,9 @@ export function step(d, sim, choice = null) {
       return sim;
     }
 
-    if (node.type === 'fork') {
+    if (bar) {
       if (outs.length < 2) {
-        sim.log.push({ type: 'warn', node: node.label, text: `«${node.label}» es un fork con ${outs.length} salida(s): no paraleliza.` });
+        sim.log.push({ type: 'warn', node: node.label, text: `«${node.label}» es una barra de paralelo con ${outs.length} salida(s): no paraleliza.` });
       }
       emit(d, sim, id, outs);
       sim.log.push({ type: 'fork', node: node.label, text: `Fork «${node.label}»: ${outs.length} ramas en paralelo.` });
@@ -258,8 +273,15 @@ export function step(d, sim, choice = null) {
     return sim;
   }
 
-  // Cola vacía
-  const waiting = d.nodes.filter((n) => n.type === 'join' && (sim.arrivals.get(n.id)?.size || 0) < d.edges.filter((e) => e.to === n.id).length);
+  // Cola vacía: si alguna barra de sincronización sigue esperando ramas, hay
+  // bloqueo. El papel se decide por las flechas, no por el tipo guardado.
+  const waiting = d.nodes.filter((n) => {
+    if (!isBar(n)) return false;
+    const papel = barRole(d, n.id);
+    if (papel !== 'join' && papel !== 'both') return false;
+    const need = d.edges.filter((e) => e.to === n.id).length;
+    return (sim.arrivals.get(n.id)?.size || 0) < need;
+  });
   if (waiting.length) {
     sim.status = 'deadlock';
     sim.deadlocked = true;

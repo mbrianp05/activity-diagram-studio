@@ -2,7 +2,7 @@
  * Validación semántica del diagrama: comprueba las reglas de los gateways
  * de decisión y de los nodos de control de paralelo (fork / join).
  */
-import { NODE_TYPES, outEdges, inEdges, nodeById } from './model.js';
+import { NODE_TYPES, outEdges, inEdges, nodeById, barRole } from './model.js';
 
 export function validate(d) {
   const issues = [];
@@ -42,19 +42,20 @@ export function validate(d) {
         if (outs.length) push('error', `${name}: un punto muerto no puede tener salida: el flujo se detiene aquí.`, { nodeId: n.id });
         break;
       case 'fork':
-        if (outs.length < 2) push('error', `${name}: un fork debe tener 2 o más salidas (tiene ${outs.length}).`, { nodeId: n.id });
-        if (ins.length > 1) push('warn', `${name}: un fork con varias entradas vuelve a paralelizar el flujo.`, { nodeId: n.id });
-        break;
-      case 'join':
-        if (ins.length < 2) {
-          const single = ins[0];
-          const forkLike = single && outEdges(d, single.from).length >= 2;
-          push(forkLike ? 'warn' : 'error',
-            `${name}: un join necesita 2 o más entradas (tiene ${ins.length}).${forkLike ? ' Si todas vienen del mismo fork, esto es otra bifurcación: usa un fork o une con un nodo de decisión.' : ''}`,
+      case 'join': {
+        // El tipo guardado es sólo una pista: lo que manda son las flechas. Una
+        // barra con 2+ entradas es un join, con 2+ salidas es un fork, y con
+        // ambas cosas es una barra combinada perfectamente válida.
+        const role = barRole(d, n.id);
+        if (role === 'none') {
+          push('error',
+            `${name}: una barra de paralelo necesita 2 o más entradas (join) o 2 o más salidas (fork); ahora tiene ${ins.length} entrada(s) y ${outs.length} salida(s).`,
             { nodeId: n.id });
+        } else if (role === 'both') {
+          push('info', `${name}: la barra sincroniza ${ins.length} entradas y reparte ${outs.length} salidas (join + fork).`, { nodeId: n.id });
         }
-        if (outs.length > 1) push('error', `${name}: un join debe tener una sola salida.`, { nodeId: n.id });
         break;
+      }
       case 'decision': {
         if (!outs.length) push('error', `${name}: la decisión no tiene salidas.`, { nodeId: n.id });
         if (ins.length > 1) push('error', `${name}: una decisión no puede recibir más de un flujo (tiene ${ins.length}).`, { nodeId: n.id });
@@ -71,6 +72,10 @@ export function validate(d) {
         if (!ins.length) push('warn', `${name}: la decisión no es alcanzable.`, { nodeId: n.id });
         break;
       }
+      case 'objeto':
+        // Los objetos son anotaciones semánticas: da igual que reciban flechas
+        // o que salgan de ellos, así que no se validan sus conexiones.
+        break;
       case 'note':
         if (ins.length || outs.length) push('info', `${name}: las notas no ejecutan flujo; sus flechas son sólo informativas.`, { nodeId: n.id });
         break;
@@ -97,10 +102,10 @@ export function validate(d) {
     }
   }
 
-  // Nodos inalcanzables desde el inicio
+  // Nodos inalcanzables desde el inicio (los objetos no entran: son semánticos)
   const reachable = reachableFromStart(d);
   for (const n of d.nodes) {
-    if (!reachable.has(n.id) && n.type !== 'note') {
+    if (!reachable.has(n.id) && n.type !== 'note' && n.type !== 'objeto') {
       push('info', `«${n.label}» no es alcanzable desde el inicio.`, { nodeId: n.id });
     }
   }

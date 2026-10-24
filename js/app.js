@@ -33,6 +33,8 @@ import {
   isRotatable,
   rotateNode,
   orientationLabel,
+  barRole,
+  syncBarTypes,
 } from "./model.js";
 import { nodeSides } from "./routing.js";
 import { planAlign, planDistribute } from "./align.js";
@@ -785,10 +787,23 @@ class App {
 
   semanticHint(n, ins, outs) {
     const bits = [];
-    if (n.type === "fork" && outs.length < 2)
-      bits.push("Un fork necesita al menos 2 salidas para paralelizar.");
-    if (n.type === "join" && ins.length < 2)
-      bits.push("Un join necesita al menos 2 entradas para sincronizar.");
+    if (n.type === "fork" || n.type === "join") {
+      const role = barRole(this.diagram, n.id);
+      if (role === "none")
+        bits.push(
+          `Una barra de paralelo necesita 2 o más entradas (join) o 2 o más salidas (fork); ahora tiene ${ins.length} entrada(s) y ${outs.length} salida(s).`,
+        );
+      else if (role === "both")
+        bits.push(
+          `Esta barra sincroniza ${ins.length} entradas y reparte ${outs.length} salidas: es un join y un fork a la vez.`,
+        );
+      else
+        bits.push(
+          role === "fork"
+            ? "Es un fork: reparte el flujo por sus salidas."
+            : "Es un join: espera a que lleguen todas sus entradas.",
+        );
+    }
     if (n.type === "decision" && outs.length > 1) {
       const unlabeled = outs.filter((e) => !e.label && !e.condition).length;
       if (unlabeled)
@@ -912,6 +927,9 @@ class App {
           n.w = Math.max(t.minW, n.w);
           n.h = Math.max(t.minH, n.h);
         }
+        // Si el nodo pasa a ser barra de paralelo (o ya lo era), su tipo real
+        // lo deciden las flechas que tiene.
+        syncBarTypes(this.diagram, [n.id]);
         this.commit("Cambiar tipo");
       });
       on("f-label", "input", (ev) => {
@@ -968,6 +986,8 @@ class App {
         this.pushHistory();
         [e.from, e.to] = [e.to, e.from];
         [e.fromSide, e.toSide] = [e.toSide, e.fromSide];
+        // Al invertir cambian las entradas/salidas de las barras de los extremos.
+        syncBarTypes(this.diagram, [e.from, e.to]);
         this.commit("Invertir flujo");
       });
       on("b-del", "click", () =>
