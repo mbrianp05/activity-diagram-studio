@@ -1,8 +1,7 @@
 /**
  * Activity Diagram Studio
  * Editor de diagramas de actividades UML: nodos de acción, gateways de
- * decisión, controles de paralelo (fork/join), carriles, validación y
- * simulación del flujo de control.
+ * decisión, controles de paralelo (fork/join), carriles y validación.
  */
 import {
   createDiagram,
@@ -183,10 +182,7 @@ class App {
         this.state.selected.length === 1 ? this.state.selected[0] : null,
       selectedSet: this.state.selected,
       selectedLane: this.state.selectedLane,
-      tokens: this.simRunning ? simView(this.sim).tokens : null,
-      activeEdges: this.simRunning ? simView(this.sim).activeEdges : null,
       errorNodes: this.state.errorNodes,
-      simulating: this.simRunning,
     });
     this.interaction?.drawResizeHandle();
     this.interaction?.drawRouteHandles();
@@ -201,10 +197,7 @@ class App {
       selected:
         this.state.selected.length === 1 ? this.state.selected[0] : null,
       selectedSet: this.state.selected,
-      tokens: this.simRunning ? simView(this.sim).tokens : null,
-      activeEdges: this.simRunning ? simView(this.sim).activeEdges : null,
       errorNodes: this.state.errorNodes,
-      simulating: this.simRunning,
     });
     this.interaction?.drawResizeHandle();
     this.interaction?.drawRouteHandles();
@@ -863,7 +856,6 @@ class App {
         <label>Condición</label>
         <input type="text" id="f-econd" value="${esc(e.condition)}" placeholder="stock > 0" />
       </div>
-      <p class="kv" id="cond-check"></p>
       <div class="field">
         <label>Recorrido</label>
         <p class="kv">${
@@ -962,7 +954,6 @@ class App {
       });
       on("f-econd", "input", (ev) => {
         e.condition = ev.target.value;
-        this.checkCondition(e);
         this.persistSoon();
       });
       on("f-side-out", "change", (ev) => {
@@ -1000,7 +991,6 @@ class App {
           this.commit("Etiquetar flujo");
         });
       });
-      this.checkCondition(e);
     }
 
     if (this.state.selected.length > 1) {
@@ -1050,23 +1040,6 @@ class App {
     document.querySelectorAll("details.menu[open]").forEach((d) => {
       d.open = false;
     });
-  }
-
-  checkCondition(e) {
-    const box = document.getElementById("cond-check");
-    if (!box) return;
-    if (!e.condition.trim()) {
-      box.textContent =
-        "Sin condición: la simulación pedirá elegir la rama o usará la única salida.";
-      return;
-    }
-    try {
-      const sampleVars = this.sim?.vars || { stock: 3, x: 3, urgente: 0 };
-      const val = evaluate(e.condition, sampleVars);
-      box.textContent = `Expresión válida. Con las variables actuales = ${val}.`;
-    } catch (err) {
-      box.textContent = `Expresión inválida: ${err.message}`;
-    }
   }
 
   /* ============================ edición rápida =========================== */

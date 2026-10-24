@@ -2,7 +2,7 @@
   "name": "activity-diagram-web",
   "version": "1.0.0",
   "private": true,
-  "description": "Editor y simulador de diagramas de actividades UML (decisiones, paralelas, carriles)",
+  "description": "Editor de diagramas de actividades UML (decisiones, paralelas, carriles)",
   "type": "module",
   "scripts": {
     "start": "node server.mjs",

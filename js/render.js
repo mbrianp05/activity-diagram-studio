@@ -345,7 +345,6 @@ export class Renderer {
 
   buildNode(node) {
     const g = el('g', { class: `node type-${node.type}`, 'data-id': node.id });
-    g.__glow = el('rect', { class: 'node-token-glow', rx: 12 }, g);
     g.__shape = shapeFor(node);
     g.__type = node.type;
     g.appendChild(g.__shape);
@@ -369,7 +368,6 @@ export class Renderer {
       || (state.selectedSet || []).some((s) => s.type === 'node' && s.id === node.id);
     g.setAttribute('class', `node type-${node.type}${
       isSel ? ' selected' : ''}${
-      state.tokens?.has(node.id) ? ' token' : ''}${
       state.errorNodes?.has(node.id) ? ' error' : ''}`);
 
     // La figura se reconstruye si cambia de tipo (no sólo si cambia de
@@ -425,20 +423,6 @@ export class Renderer {
       g.__ring.setAttribute('opacity', '1');
     } else if (g.__ring) {
       g.__ring.setAttribute('opacity', '0');
-    }
-
-    const glow = g.__glow;
-    if (state.tokens?.has(node.id)) {
-      const pad = 7 + (node.type === 'end' ? END_RING_GAP : 0);
-      const side = dotRadius(node) * 2 + pad * 2;
-      glow.setAttribute('x', node.x + node.w / 2 - side / 2);
-      glow.setAttribute('y', node.y + node.h / 2 - side / 2);
-      glow.setAttribute('width', side);
-      glow.setAttribute('height', side);
-      glow.setAttribute('rx', side / 2);
-      glow.setAttribute('opacity', '1');
-    } else {
-      glow.setAttribute('opacity', '0');
     }
 
     g.__hit.setAttribute('x', node.x - 4);
@@ -509,22 +493,20 @@ export class Renderer {
 
     // Puntos de conexión: donde entran y salen las flechas de verdad.
     g.__handles.textContent = '';
-    if (!state.simulating) {
-      const usados = this.ports?.get(node.id);
-      const libres = handlePositions(node);
-      for (const side of nodeSides(node)) {
-        const lista = usados?.get(side);
-        const libre = libres[side];
-        if (!libre && !lista) continue;
-        const puntos = lista && lista.length ? lista : [{ ...libre, used: false }];
-        for (const p of puntos) {
-          const h = el('circle', {
-            class: `handle${p.used ? ' used' : ''}`, cx: p.x, cy: p.y, r: 6,
-            'data-handle': side, 'data-node-id': node.id,
-          }, g.__handles);
-          h.__side = side;
-          h.__nodeId = node.id;
-        }
+    const usados = this.ports?.get(node.id);
+    const libres = handlePositions(node);
+    for (const side of nodeSides(node)) {
+      const lista = usados?.get(side);
+      const libre = libres[side];
+      if (!libre && !lista) continue;
+      const puntos = lista && lista.length ? lista : [{ ...libre, used: false }];
+      for (const p of puntos) {
+        const h = el('circle', {
+          class: `handle${p.used ? ' used' : ''}`, cx: p.x, cy: p.y, r: 6,
+          'data-handle': side, 'data-node-id': node.id,
+        }, g.__handles);
+        h.__side = side;
+        h.__nodeId = node.id;
       }
     }
     void t;
@@ -548,14 +530,13 @@ export class Renderer {
       }
       const selected = (state.selected?.type === 'edge' && state.selected.id === edge.id)
         || (state.selectedSet || []).some((s) => s.type === 'edge' && s.id === edge.id);
-      const active = state.activeEdges?.has(edge.id);
-      rec.g.setAttribute('class', `edge-wrap${selected ? ' selected' : ''}${active ? ' token' : ''}`);
+      rec.g.setAttribute('class', `edge-wrap${selected ? ' selected' : ''}`);
       const dash = edge.kind === 'message' ? '7 6' : null;
       const dAttr = edgePath(geo);
       rec.path.setAttribute('d', dAttr);
       rec.hit.setAttribute('d', dAttr);
-      rec.path.setAttribute('class', `edge${selected ? ' selected' : ''}${active ? ' token' : ''}`);
-      rec.path.setAttribute('marker-end', active ? 'url(#arrow-token)' : selected ? 'url(#arrow-selected)' : 'url(#arrow)');
+      rec.path.setAttribute('class', `edge${selected ? ' selected' : ''}`);
+      rec.path.setAttribute('marker-end', selected ? 'url(#arrow-selected)' : 'url(#arrow)');
       if (dash) rec.path.setAttribute('stroke-dasharray', dash);
       else rec.path.removeAttribute('stroke-dasharray');
 

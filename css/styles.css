@@ -17,7 +17,6 @@
   --ok: #c8c8ce;
   --warn: #b79a4a;
   --err: #c4574f;
-  --token: #ffffff;
   --node-fill: #17171a;
   --node-stroke: #6f6f78;
   --radius: 6px;
@@ -583,22 +582,6 @@ body {
   stroke-width: 1.8;
   stroke-dasharray: none;
 }
-.node.token > .node-shape {
-  stroke: var(--token);
-  stroke-width: 2.6;
-}
-.node.token .node-dot {
-  fill: var(--token);
-}
-.node.token .node-ring {
-  stroke: var(--token);
-}
-.node.token-glow {
-  fill: none;
-  stroke: var(--token);
-  stroke-width: 1.2;
-  opacity: 0.3;
-}
 .node.error > .node-shape {
   stroke: var(--err);
 }
@@ -627,10 +610,6 @@ body {
 }
 .edge.selected {
   stroke: #ffffff;
-  stroke-width: 2.4;
-}
-.edge.token {
-  stroke: var(--token);
   stroke-width: 2.4;
 }
 /* La etiqueta de la flecha seleccionada se lee con más contraste. */

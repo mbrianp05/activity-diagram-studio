@@ -46,9 +46,6 @@ const MARKER = `
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0 0 10 5 0 10z" fill="#6b6b74" />
     </marker>
-    <marker id="arrow-token" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-      <path d="M0 0 10 5 0 10z" fill="#ffffff" />
-    </marker>
     <marker id="arrow-selected" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M0 0 10 5 0 10z" fill="#f4f4f6" />
     </marker>
@@ -72,7 +69,7 @@ export function exportSvg(svg, diagram, { forPng = false, padding = 40 } = {}) {
   const height = Math.max(300, Math.max(bottom, 300) - minY + padding);
 
   const clone = svg.querySelector('#viewport').cloneNode(true);
-  clone.querySelectorAll('.handle, .node-token-glow, .temp-edge, .insert-preview, .route-points, .port-hints, [data-resize], [data-lane-resize], .edge-hit, .node-hit')
+  clone.querySelectorAll('.handle, .temp-edge, .insert-preview, .route-points, .port-hints, [data-resize], [data-lane-resize], .edge-hit, .node-hit')
     .forEach((n) => n.remove());
   clone.querySelectorAll('.node.selected .node-shape').forEach((n) => {
     n.setAttribute('stroke', '#6f6f78');

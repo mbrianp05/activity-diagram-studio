@@ -1,10 +1,9 @@
 /**
- * Pruebas de la lógica del diagrama (sin DOM): modelo, validación y simulación.
+ * Pruebas de la lógica del diagrama (sin DOM): modelo, validación y geometría.
  * Ejecutar con:  node js/selftest.mjs
  */
 import { sampleDiagram, createNode, createEdge, createDiagram, createLane, deserialize, assignLanes, shiftLanes, swapLanes, removeLaneAt, laneMinHeight, laneTop, nodeById, NODE_TYPES, copyGroup, pasteGroup, groupBounds, freeSpot, LANE_PAD, isRotatable, rotateNode, orientationLabel, minSize, resizeTo, addEdge, removeEdge, barRole } from './model.js';
 import { validate, summary } from './validate.js';
-import { createSim, start, step, evaluate } from './simulate.js';
 import {
   anchorFor, anchors, pickSides, nodeSides, edgeGeometry, labelSpot, guidePoint, avoidNodes,
   nearestOnPolyline, sideNear, userRouteTip, userRoute, exitGuide, linkRoute, wallLimit,
@@ -36,19 +35,6 @@ function check(name, cond, extra = '') {
   else { fail += 1; console.log(`  FAIL ${name} ${extra}`); }
 }
 
-function run(d, vars, maxSteps = 60) {
-  const sim = createSim(d);
-  sim.vars = vars;
-  start(d, sim);
-  let steps = 0;
-  while (steps < maxSteps) {
-    if (sim.finished || sim.deadlocked || sim.status === 'choice') break;
-    step(d, sim);
-    steps += 1;
-  }
-  return { sim, steps };
-}
-
 /** ¿Se solapan dos rectángulos (sin margen)? */
 function solapan(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -66,56 +52,6 @@ const issues = validate(d);
 const s = summary(issues);
 check('sin errores en el ejemplo', s.error === 0, JSON.stringify(issues.filter((i) => i.level === 'error')));
 check('informa de algo o nada', issues.length >= 0);
-
-console.log('\n3. Simulación con stock disponible (stock = 3)');
-{
-  const r = run(d, { stock: 3 });
-  check('finaliza', r.sim.finished, JSON.stringify(r.sim.log.slice(-2)));
-  check('toma la rama afirmativa', r.sim.log.some((l) => l.type === 'decision' && l.text.includes('hay stock') && !l.text.includes('no hay stock')));
-  check('el fork crea ramas', r.sim.log.some((l) => l.type === 'fork'));
-  check('el join sincroniza', r.sim.log.some((l) => l.type === 'join'));
-  check('no hay bloqueos', !r.sim.deadlocked);
-}
-
-console.log('\n4. Simulación sin stock (stock = 0)');
-{
-  const r = run(d, { stock: 0 });
-  check('finaliza', r.sim.finished, JSON.stringify(r.sim.log.slice(-2)));
-  check('toma la rama negativa', r.sim.log.some((l) => l.type === 'decision' && l.text.includes('no hay stock')));
-}
-
-console.log('\n5. Detección de bloqueos en el join');
-{
-  const g = createDiagram();
-  const s1 = createNode('start', 100, 100, { label: 'Inicio' });
-  const fork = createNode('fork', 300, 100, { label: 'Fork' });
-  const a1 = createNode('activity', 500, 40, { label: 'A' });
-  const a2 = createNode('activity', 500, 200, { label: 'B' });
-  const lonely = createNode('activity', 500, 360, { label: 'C huérfano' });
-  const join = createNode('join', 700, 100, { label: 'Join' });
-  const end = createNode('end', 900, 100, { label: 'Fin' });
-  g.nodes.push(s1, fork, a1, a2, lonely, join, end);
-  g.edges.push(
-    createEdge(s1.id, fork.id),
-    createEdge(fork.id, a1.id),
-    createEdge(fork.id, a2.id),
-    createEdge(a1.id, join.id),
-    // La rama C nunca alcanza el join -> el join se queda esperando
-    createEdge(lonely.id, join.id),
-    createEdge(join.id, end.id),
-  );
-  const v = summary(validate(g));
-  check('sin errores de estructura', v.error === 0, JSON.stringify(validate(g).filter((i) => i.level === 'error')));
-  const r = run(g, {});
-  check('detecta bloqueo en el join', r.sim.deadlocked, JSON.stringify(r.sim.log.slice(-1)));
-  check('mensaje explica la falta', r.sim.log[r.sim.log.length - 1].text.includes('Bloqueo'));
-
-  // Ahora la rama huérrafa también llega al join
-  g.edges.splice(2, 0, createEdge(fork.id, lonely.id));
-  const r2 = run(g, {});
-  check('con todas las ramas, finaliza', r2.sim.finished, JSON.stringify(r2.sim.log.slice(-1)));
-  check('el join sólo avanza cuando llegaron todas sus entradas', r2.sim.log.some((l) => l.type === 'join' && l.text.includes('sincronizadas 2')));
-}
 
 console.log('\n6. Errores de validación de gateways');
 {
@@ -189,34 +125,6 @@ console.log('\n6c. Al copiar y pegar, la barra cambia de tipo si cambian sus fle
   addEdge(g, createEdge(extra2.id, copia.id));
   check('con dos entradas y una salida la copia pasa a join', copia.type === 'join' && barRole(g, copia.id) === 'join');
 }
-
-console.log('\n7. Decisión con salidas sin etiquetar pide elección');
-{
-  const g = createDiagram();
-  const s1 = createNode('start', 100, 100);
-  const dec = createNode('decision', 320, 100, { label: '¿Cuál?' });
-  const a = createNode('activity', 560, 40, { label: 'A' });
-  const b = createNode('activity', 560, 200, { label: 'B' });
-  g.nodes.push(s1, dec, a, b);
-  g.edges.push(createEdge(s1.id, dec.id), createEdge(dec.id, a.id), createEdge(dec.id, b.id));
-  const r = run(g, {});
-  check('estado = choice', r.sim.status === 'choice', r.sim.status);
-  check('ofrece 2 opciones', r.sim.pending?.options.length === 2);
-  step(g, r.sim, r.sim.pending.options[1]);
-  check('al elegir una rama el flujo continúa', r.sim.status !== 'choice', r.sim.status);
-  check('la rama elegida se ejecutó', r.sim.log.some((l) => l.type === 'decision'));
-  check('llega al final por la rama elegida', r.sim.finished || r.sim.tokens.size > 0 || r.sim.queue.length > 0);
-}
-
-console.log('\n8. Condiciones');
-check('stock > 0 con 3', evaluate('stock > 0', { stock: 3 }) === true);
-check('stock > 0 con 0', evaluate('stock > 0', { stock: 0 }) === false);
-check('expresión compuesta', evaluate('stock > 0 && nivel >= 2', { stock: 5, nivel: 2 }) === true);
-check('alternativa', evaluate('a == 1 || b == 2', { a: 0, b: 2 }) === true);
-check('paréntesis', evaluate('(a > 1 || b > 1) && c != 0', { a: 0, b: 2, c: 5 }) === true);
-check('texto vacío = verdadero', evaluate('', {}) === true);
-try { evaluate('stock >', { stock: 1 }); check('expresión rota lanza error', false); }
-catch { check('expresión rota lanza error', true); }
 
 console.log('\n9. Serialización');
 {
@@ -402,9 +310,6 @@ console.log('\n13. Nodo de objeto');
   const back = deserialize(JSON.stringify(g));
   const bOb = back.nodes.find((n) => n.type === 'objeto');
   check('el objeto sobrevive al guardado', !!bOb && bOb.note === 'pendiente de pago');
-
-  const r = run(g, {});
-  check('el simulador atraviesa el objeto', r.sim.finished, JSON.stringify(r.sim.log.slice(-2)));
 }
 
 console.log('\n13b. El validador no tiene en cuenta los objetos');
@@ -988,9 +893,6 @@ console.log('\n19. Nodo de punto muerto');
   check('no se le pide una salida (es un final del flujo)',
     !validate(g).some((x) => x.nodeId === stop.id && x.msg.includes('sin salida')),
     JSON.stringify(validate(g)));
-  check('la simulación se detiene ahí', run(g, {}).sim.finished);
-  check('y lo dice en el registro',
-    run(g, {}).sim.log.some((l) => l.type === 'stop' && l.text.includes('se detiene')));
 
   // Un punto muerto con salida es un error.
   const b = createNode('activity', 800, 300);
@@ -1194,7 +1096,6 @@ console.log('\n23. Nodos de proceso, tiempo y notificación');
   check('el diagrama de ejemplo no rotula fork ni join',
     sampleDiagram().nodes.filter((n) => n.type === 'fork' || n.type === 'join').every((n) => !n.label));
   check('validación sin errores', summary(validate(g)).error === 0, JSON.stringify(validate(g)));
-  check('la simulación los atraviesa', run(g, {}).sim.finished);
 
   // Enviar notificación: pico hacia fuera por la derecha.
   const ps = shapeAttrs(env).attrs.points.split(' ').map((p) => p.split(',').map(Number));

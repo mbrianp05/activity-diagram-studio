@@ -62,11 +62,7 @@ export function validate(d) {
         if (outs.length > 1) {
           const sinEtiqueta = outs.filter((e) => !e.label.trim() && !e.condition.trim());
           if (sinEtiqueta.length) {
-            push('warn', `${name}: ${sinEtiqueta.length} de ${outs.length} salidas sin etiqueta (ponle un texto o una condición). Etiquétalas para poder simular.`, { nodeId: n.id });
-          }
-          const conCond = outs.filter((e) => e.condition.trim());
-          if (conCond.length && conCond.length !== outs.length) {
-            push('info', `${name}: mezcla salidas con condición y sin condición; la simulación usará la primera etiqueta libre.`, { nodeId: n.id });
+            push('warn', `${name}: ${sinEtiqueta.length} de ${outs.length} salidas sin etiqueta (ponle un texto o una condición). Etiquétalas para distinguir las ramas.`, { nodeId: n.id });
           }
         }
         if (!ins.length) push('warn', `${name}: la decisión no es alcanzable.`, { nodeId: n.id });

@@ -1,6 +1,6 @@
 # Activity Diagram Studio
 
-Editor y simulador de **diagramas de actividades UML** que funciona directamente en el navegador. Permite dibujar flujos de trabajo con decisiones, ramas paralelas (fork/join), carriles de actor y notificaciones, validar la coherencia del diagrama y ejecutarlo paso a paso con un simulador de tokens.
+Editor de **diagramas de actividades UML** que funciona directamente en el navegador. Permite dibujar flujos de trabajo con decisiones, ramas paralelas (fork/join), carriles de actor y notificaciones, y validar la coherencia del diagrama.
 
 Pensado para modelar y comprobar procesos sin instalar nada: es HTML + CSS + ES modules nativos, **sin dependencias, sin build y sin framework**.
 
@@ -10,7 +10,6 @@ Pensado para modelar y comprobar procesos sin instalar nada: es HTML + CSS + ES 
 - **Organizar por carriles** (calles horizontales) para representar actores o responsables.
 - **Conectar nodos** eligiendo por qué lado sale y entra cada flecha, con puntos de giro manuales.
 - **Validar** el diagrama: un solo inicio, fines sin salida, fork con ≥2 salidas, join con ≥2 entradas, etc.
-- **Simular** el flujo paso a paso, incluyendo decisiones con condiciones, ramas paralelas y bloqueos.
 - **Guardar y abrir** diagramas en JSON, con autoguardado en `localStorage`.
 - **Exportar** a SVG, PNG o WEBP.
 - Deshacer/rehacer, copiar/pegar, zoom y paneo.
@@ -43,7 +42,7 @@ PORT=3000 npm start
 2. Añade carriles con **+** y arrastra los nodos a la banda del actor correspondiente.
 3. Usa **Conectar (C)** para unir dos nodos; haz clic derecho durante el trazado para fijar un punto de giro.
 4. Selecciona un nodo o una flecha para editarlo en el inspector (texto, tipo, lado de conexión, condición de una decisión…).
-5. Pulsa **Validar** para revisar errores y **Simular** para ejecutar el flujo.
+5. Pulsa **Validar** para revisar errores y coherencia del diagrama.
 
 El diagrama se autoguarda en el navegador. **Guardar** descarga un `.json` y **Exportar** genera un SVG o PNG listo para compartir.
 
@@ -68,7 +67,7 @@ El diagrama se autoguarda en el navegador. **Guardar** descarga un `.json` y **E
 
 ## Tests
 
-La lógica pura (modelo, validación y simulación) tiene una suite sin DOM:
+La lógica pura (modelo, validación y geometría) tiene una suite sin DOM:
 
 ```bash
 node js/selftest.mjs
@@ -82,13 +81,12 @@ Sale con código `1` si hay fallos. Los cambios de render, interacción o export
 index.html      shell de la app y capas SVG
 css/styles.css  tema oscuro
 server.mjs      servidor estático (PORT, por defecto 5173)
-js/app.js       estado, UI, inspector, historial, persistencia y simulación
+js/app.js       estado, UI, inspector, historial, persistencia y validación
 js/render.js    reconstrucción de las capas SVG
 js/interact.js  puntero, arrastre, marquesina, paneo, zoom y teclado
 js/routing.js   geometría de las flechas
 js/model.js     modelo de datos puro
 js/validate.js  reglas semánticas del diagrama
-js/simulate.js  motor de simulación
 js/io.js        exportación JSON / SVG / PNG
 js/selftest.mjs pruebas sin DOM
 ```

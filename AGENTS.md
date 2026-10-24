@@ -2,7 +2,7 @@
 
 ## Qué es
 
-Editor + simulador de diagramas de actividades UML (decisiones, fork/join, carriles).
+Editor de diagramas de actividades UML (decisiones, fork/join, carriles).
 Cero dependencias, cero build: HTML + CSS + ES modules nativos servidos tal cual.
 UI, comentarios y JSDoc están en **español**; mantén ese idioma en el código.
 
@@ -16,7 +16,7 @@ node js/selftest.mjs   # único test suite; sale con 1 si hay fallos
 - No hay linter, formateador, typecheck ni bundler configurado. No los inventes ni añadas dependencias.
 - `js/selftest.mjs` **no** está en `package.json` scripts (a propósito o no); ejecútalo con `node` directamente.
 - Abre siempre vía servidor. `file://` rompe los ES modules (CORS).
-- `selftest.mjs` solo cubre lógica pura (`model`, `validate`, `simulate`). Cambios en render/interact/io se verifican a mano en el navegador.
+- `selftest.mjs` solo cubre lógica pura (`model`, `validate`, `routing`, `align`). Cambios en render/interact/io se verifican a mano en el navegador.
 
 ## Arquitectura
 
@@ -24,18 +24,17 @@ node js/selftest.mjs   # único test suite; sale con 1 si hay fallos
 index.html      estructura del shell + <defs> SVG (grid, marcadores) + capas #viewport
 css/styles.css  tema oscuro; el editor usa variables CSS (--grid, etc.)
 server.mjs      servidor estático con protección de path traversal
-js/app.js       clase App monolítica: estado, UI, inspector, historial, persistencia, simulación
+js/app.js       clase App monolítica: estado, UI, inspector, historial, persistencia, validación
 js/render.js    Renderer: reconstruye las capas SVG; render() completo, refresh() durante arrastre
 js/interact.js  Interaction: puntero, arrastre, redimensión, marquesina, paneo, zoom, teclado
 js/routing.js   geometría ortogonal de flujos (anchors, pickSides, edgeGeometry, edgePath)
 js/model.js     datos puros: NODE_TYPES, create*, consultas, serialize/deserialize
 js/validate.js  reglas semánticas -> issues {level: error|warn|info, msg, nodeId?, edgeId?}
-js/simulate.js  motor de tokens + evaluador de expresiones propio (sin eval)
 js/io.js        export JSON/SVG/PNG
 js/selftest.mjs pruebas sin DOM
 ```
 
-Dependencias: `routing.js` no importa nada del DOM salvo constantes; `model.js` + `validate.js` + `simulate.js` son importables en Node (tests). Mantén esa separación: no introduzcas `document` en model/validate/simulate/routing.
+Dependencias: `routing.js` no importa nada del DOM salvo constantes; `model.js` + `validate.js` son importables en Node (tests). Mantén esa separación: no introduzcas `document` en model/validate/routing.
 
 ## Flujo de edición (respeta este patrón)
 
@@ -96,8 +95,6 @@ El handler es global: respeta el guard `typing` (INPUT/TEXTAREA/SELECT) o romper
 
 - Tipos de nodo: `start`, `end`, `stop` (punto muerto), `activity`, `proceso`, `tiempo`, `enviar`, `recibir`, `objeto`, `decision`, `fork`, `join`, `note`. El **estado de un `objeto`** se guarda en `node.note` y se pinta entre `<< >>`; no añadas un campo nuevo.
 - Un único nodo `start` (sin entradas, con salida); `end` y `stop` sin salida; `fork` ≥2 salidas; `join` ≥2 entradas.
-- `stop` se dibuja como un círculo con una diagonal de izquierda a derecha (`g.__slash` en `render.js`): del mismo grosor que el círculo y de un borde al otro, sin holgura por medio. En el simulador termina el flujo como un `end`.
+- `stop` se dibuja como un círculo con una diagonal de izquierda a derecha (`g.__slash` en `render.js`): del mismo grosor que el círculo y de un borde al otro, sin holgura por medio.
 - Figuras: `render.js:shapeAttrs(node)` es la **única** fuente de la forma de un nodo (elemento + atributos); la usan el nodo del diagrama y el fantasma de inserción de `interact.js:updateInsertPreview`. `romboPoints` (decisión), `relojPoints` (tiempo, reloj de arena), `enviarPoints` (pico hacia fuera por la derecha), `recibirPoints` (muesca hacia dentro por la izquierda) y `tridentePuntos` (tridente recto del proceso, esquina inferior derecha). `updateNode` reconstruye la figura cuando cambia el **tipo**, no sólo cuando cambia el elemento, para no dejar atributos del anterior.
-- `startSim()` aborta si hay issues con `level === 'error'`.
-- Las ramas de una `decision` **no** se autoetiquetan: la etiqueta la escribe el usuario (doble clic en la flecha o inspector) y la condición es lo que decide el simulador.
-- El simulador pide elección (`status === 'choice'`) cuando una decisión tiene varias salidas sin condición; `join` cuenta tokens y detecta bloqueos.
+- Las ramas de una `decision` **no** se autoetiquetan: la etiqueta la escribe el usuario (doble clic en la flecha o inspector) y la condición es la guarda UML que se muestra junto a la flecha.

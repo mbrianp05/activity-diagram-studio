@@ -281,9 +281,9 @@ export function sampleDiagram() {
   const edges = [
     e(byLabel('Solicitar producto'), byLabel('Registrar pedido')),
     e(byLabel('Registrar pedido'), byLabel('¿Stock disponible?')),
-    // Las ramas se escriben a mano: el simulador usa la condición, la etiqueta
-    // es sólo el texto que se ve junto a la flecha. Cada rama sale por su
-    // bolita (arriba la afirmativa, abajo la negativa) y lleva su punto de giro.
+    // Las ramas se escriben a mano: la condición es la guarda UML y la etiqueta
+    // es el texto que se ve junto a la flecha. Cada rama sale por su bolita
+    // (arriba la afirmativa, abajo la negativa) y lleva su punto de giro.
     e(byLabel('¿Stock disponible?'), byLabel('Reservar stock'), 'hay stock', 'stock > 0', {
       fromSide: 'top', toSide: 'left', way: [{ x: 700, y: 190 }],
     }),

@@ -1160,7 +1160,7 @@ export class Interaction {
   updateInsertPreview(e) {
     const tool = this.app.tool;
     const t = NODE_TYPES[tool];
-    if (!t || this.app.simRunning || !e.target?.closest?.("#canvas")) {
+    if (!t || !e.target?.closest?.("#canvas")) {
       this.clearInsertPreview();
       return;
     }
@@ -1265,7 +1265,7 @@ export class Interaction {
       this.resizeHandle.remove();
       this.resizeHandle = null;
     }
-    if (this.app.simRunning || this.app.tool !== "select") return;
+    if (this.app.tool !== "select") return;
     const sel = this.app.state.selected.filter((s) => s.type === "node");
     if (sel.length !== 1) return;
     const n = nodeById(this.app.diagram, sel[0].id);
