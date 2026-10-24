@@ -24,6 +24,8 @@ import {
   removeEdge,
   dotMax,
   removeLaneAt,
+  isVerticalLanes,
+  setLaneOrientation,
   copyGroup,
   pasteGroup,
   groupBounds,
@@ -225,6 +227,7 @@ class App {
   snapshot() {
     return JSON.stringify({
       name: this.diagram.name,
+      laneOrientation: this.diagram.laneOrientation,
       lanes: this.diagram.lanes,
       nodes: this.diagram.nodes,
       edges: this.diagram.edges,
@@ -522,25 +525,29 @@ class App {
     const r = this.svg.getBoundingClientRect();
     const v = this.diagram.view;
     const pad = 60;
-    const bottom = this.diagram.lanes.length
-      ? Math.max(
-          b.y + b.h,
-          this.diagram.lanes.reduce((s, l) => s + l.height, 0),
-        )
+    const vertical = isVerticalLanes(this.diagram);
+    const cruce = this.diagram.lanes.reduce((s, l) => s + l.height, 0);
+    // El encuadre tiene que cubrir también la cabecera y la banda de los
+    // carriles, que se extienden en el eje perpendicular al de los actores.
+    const left = vertical && this.diagram.lanes.length ? Math.min(b.x, 0) : b.x;
+    const right = vertical && this.diagram.lanes.length ? Math.max(b.x + b.w, cruce) : b.x + b.w;
+    const top = !vertical && this.diagram.lanes.length ? Math.min(b.y, 0) : b.y;
+    const bottom = !vertical && this.diagram.lanes.length
+      ? Math.max(b.y + b.h, cruce)
       : b.y + b.h;
     const k = Math.min(
       2,
       Math.max(
         0.25,
         Math.min(
-          (r.width - pad * 2) / Math.max(200, b.w),
-          (r.height - pad * 2) / Math.max(200, bottom - b.y),
+          (r.width - pad * 2) / Math.max(200, right - left),
+          (r.height - pad * 2) / Math.max(200, bottom - top),
         ),
       ),
     );
     v.k = k;
-    v.x = (r.width - b.w * k) / 2 - b.x * k;
-    v.y = (r.height - (bottom - b.y) * k) / 2 - b.y * k;
+    v.x = (r.width - (right - left) * k) / 2 - left * k;
+    v.y = (r.height - (bottom - top) * k) / 2 - top * k;
     this.applyView();
   }
 
@@ -557,6 +564,26 @@ class App {
       height: 200,
     });
     this.commit("Añadir carril");
+  }
+
+  /**
+   * Pasa los carriles de horizontales a verticales (o al revés). No es sólo un
+   * cambio de dibujo: el diagrama se transpone para que cada actor conserve su
+   * banda y sus nodos, y los flujos se lean en el nuevo eje.
+   */
+  toggleLaneOrientation() {
+    const vertical = !isVerticalLanes(this.diagram);
+    this.pushHistory();
+    setLaneOrientation(this.diagram, vertical ? "vertical" : "horizontal");
+    this.state.selected = [];
+    this.state.selectedLane = null;
+    this.commit("Orientación de carriles");
+    this.zoomFit();
+    this.toast(
+      vertical
+        ? "Carriles verticales: cada actor es una columna."
+        : "Carriles horizontales: cada actor es una fila.",
+    );
   }
 
   async editLaneName(index) {
@@ -579,6 +606,18 @@ class App {
   }
 
   renderLaneList() {
+    // El botón de orientación resume el modo actual y ofrece el contrario.
+    const mode = document.getElementById("btn-lane-orientation");
+    if (mode) {
+      const vertical = isVerticalLanes(this.diagram);
+      mode.classList.toggle("vertical", vertical);
+      mode.setAttribute("aria-pressed", String(vertical));
+      mode.title = vertical
+        ? "Pasar los carriles a horizontales (filas)"
+        : "Pasar los carriles a verticales (columnas)";
+      const label = mode.querySelector("span");
+      if (label) label.textContent = vertical ? "Verticales" : "Horizontales";
+    }
     const ul = document.getElementById("lane-list");
     ul.textContent = "";
     this.diagram.lanes.forEach((lane, i) => {
@@ -1298,6 +1337,9 @@ class App {
     document
       .getElementById("btn-lane-add")
       .addEventListener("click", () => this.addLane());
+    document
+      .getElementById("btn-lane-orientation")
+      .addEventListener("click", () => this.toggleLaneOrientation());
 
     const stage = document.getElementById("stage");
     stage.addEventListener("dragover", (e) => {

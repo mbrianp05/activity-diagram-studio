@@ -1,7 +1,7 @@
 /**
  * Exportación: descarga de archivos, SVG autónomo y rasterizado a PNG/WEBP.
  */
-import { bounds } from './model.js';
+import { bounds, isVerticalLanes } from './model.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -60,11 +60,16 @@ const MARKER = `
 /** Genera un SVG autónomo con estilos embebidos y sin elementos de edición. */
 export function exportSvg(svg, diagram, { forPng = false, padding = 40 } = {}) {
   const b = bounds(diagram);
-  const lanesH = diagram.lanes.reduce((s, l) => s + l.height, 0);
+  const vertical = isVerticalLanes(diagram);
+  // Los carriles se extienden a lo largo de su eje: alto total en horizontal y
+  // ancho total en vertical. El recorte del SVG tiene que cubrirlos.
+  const laneSpan = diagram.lanes.reduce((s, l) => s + l.height, 0);
   const minX = Math.min(b.x, 0) - padding;
   const minY = Math.min(b.y, 0) - padding;
-  const width = Math.max(400, Math.max(b.x + b.w, 400) - minX + padding);
-  const height = Math.max(300, Math.max(b.y + b.h, lanesH) - minY + padding);
+  const right = vertical && diagram.lanes.length ? Math.max(b.x + b.w, laneSpan) : b.x + b.w;
+  const bottom = !vertical && diagram.lanes.length ? Math.max(b.y + b.h, laneSpan) : b.y + b.h;
+  const width = Math.max(400, Math.max(right, 400) - minX + padding);
+  const height = Math.max(300, Math.max(bottom, 300) - minY + padding);
 
   const clone = svg.querySelector('#viewport').cloneNode(true);
   clone.querySelectorAll('.handle, .node-token-glow, .temp-edge, .insert-preview, .route-points, .port-hints, [data-resize], [data-lane-resize], .edge-hit, .node-hit')

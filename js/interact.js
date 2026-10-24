@@ -21,6 +21,8 @@ import {
   cloneDiagram,
   dotMax,
   resizeTo,
+  isVerticalLanes,
+  laneCoord,
 } from "./model.js";
 import {
   edgeGeometry,
@@ -388,7 +390,11 @@ export class Interaction {
     const h = cuadrado ? Math.max(t.w, t.h) : t.h;
     let x = Math.round(wx - w / 2);
     let y = Math.round(wy - h / 2);
-    if (x < LANE_HEADER + w / 2) x = LANE_HEADER + 4;
+    // El margen de la cabecera del carril se reserva en el eje de las bandas:
+    // a la izquierda si son horizontales y arriba si son verticales.
+    if (isVerticalLanes(this.app.diagram)) {
+      if (y < LANE_HEADER + h / 2) y = LANE_HEADER + 4;
+    } else if (x < LANE_HEADER + w / 2) x = LANE_HEADER + 4;
     if (this.snap) {
       x = Math.round(x / GRID) * GRID;
       y = Math.round(y / GRID) * GRID;
@@ -922,11 +928,14 @@ export class Interaction {
     }
 
     if (d.kind === "lane") {
-      const next = Math.max(80, Math.round((d.h0 + (w.y - d.start.y)) / 4) * 4);
+      const vertical = isVerticalLanes(this.app.diagram);
+      const avance = vertical ? w.x - d.start.x : w.y - d.start.y;
+      const next = Math.max(80, Math.round((d.h0 + avance) / 4) * 4);
       const delta = next - d.lane.height;
       if (delta) {
+        d.moved = true;
         d.lane.height = next;
-        // Los nodos siguen en su carril: los de abajo se desplazan con la banda.
+        // Los nodos siguen en su carril: los posteriores se desplazan con la banda.
         shiftLanes(this.app.diagram, d.index, delta);
       }
       this.app.refresh();
@@ -1460,10 +1469,10 @@ function labelSide(side) {
 
 function laneOf(d, node) {
   let acc = 0;
-  const cy = node.y + node.h / 2;
+  const centro = laneCoord(d, node);
   for (let i = 0; i < d.lanes.length; i += 1) {
     acc += d.lanes[i].height;
-    if (cy < acc) return i;
+    if (centro < acc) return i;
   }
   return d.lanes.length - 1;
 }

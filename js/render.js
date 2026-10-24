@@ -5,7 +5,7 @@
 import {
   edgePath, edgeGeometry, anchors, anchorFor, pickSides, nodeSides, END_RING_GAP, labelSpot,
 } from './routing.js';
-import { laneTop, NODE_TYPES, nodeById } from './model.js';
+import { laneTop, NODE_TYPES, nodeById, isVerticalLanes } from './model.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 /**
@@ -255,41 +255,74 @@ export class Renderer {
   renderLanes(d, state) {
     const layer = this.layerLanes;
     layer.textContent = '';
+    const vertical = isVerticalLanes(d);
     // Firma de lo dibujado: `refresh` la usa para saber si tiene que repintar.
-    this.laneFirma = `${d.lanes.map((l) => `${l.id}:${l.height}`).join('|')}#${state.selectedLane}`;
+    this.laneFirma = `${vertical ? 'v' : 'h'}#${d.lanes.map((l) => `${l.id}:${l.height}`).join('|')}#${state.selectedLane}`;
     if (!d.lanes.length) return;
-    const cx = LANE_HEADER / 2;
-    let y = 0;
+    let pos = 0;
     d.lanes.forEach((lane, i) => {
-      const h = lane.height;
-      el('rect', {
-        x: -4000, y, width: 12000, height: h,
-        class: `lane-band${i % 2 ? ' alt' : ''}`,
-      }, layer);
-      el('rect', { x: 0, y, width: LANE_HEADER, height: h, class: 'lane-head' }, layer);
-      // El actor va girado 90º, centrado en la barra y recortado a su alto.
-      const cy = y + (h - LANE_GRIP) / 2;
+      const grosor = lane.height;
       const active = state.selectedLane === i;
-      const title = el('text', {
-        x: cx, y: cy, class: `lane-title${active ? ' dragging' : ''}`,
-        'data-lane-title': i, transform: `rotate(-90 ${cx} ${cy})`,
-      }, layer);
-      title.textContent = fitLaneName(lane.name, h);
-      el('title', {}, title).textContent = `${lane.name} · doble clic para renombrar`;
-      // Asidero de redimensión: franja fina en el borde inferior de la barra.
-      const gripY = y + h - LANE_GRIP;
-      const attrs = { 'data-lane-resize': i, style: 'cursor: ns-resize' };
-      const grip = el('rect', {
-        x: 0, y: gripY, width: LANE_HEADER, height: LANE_GRIP, class: 'lane-grip', ...attrs,
-      }, layer);
-      el('title', {}, grip).textContent = 'Arrastra para cambiar el alto del carril';
-      for (const dy of [-3, 3]) {
-        el('line', {
-          x1: cx - 7, y1: gripY + LANE_GRIP / 2 + dy, x2: cx + 7, y2: gripY + LANE_GRIP / 2 + dy,
-          class: 'lane-grip-mark', ...attrs,
+      const attrs = { 'data-lane-resize': i };
+      if (vertical) {
+        // Carril vertical: banda que ocupa todo el alto y cabecera horizontal
+        // pegada al borde superior, con el nombre del actor sin girar.
+        el('rect', {
+          x: pos, y: -4000, width: grosor, height: 12000,
+          class: `lane-band${i % 2 ? ' alt' : ''}`,
         }, layer);
+        el('rect', { x: pos, y: 0, width: grosor, height: LANE_HEADER, class: 'lane-head' }, layer);
+        const cx = pos + (grosor - LANE_GRIP) / 2;
+        const title = el('text', {
+          x: cx, y: LANE_HEADER / 2, class: `lane-title${active ? ' dragging' : ''}`,
+          'data-lane-title': i,
+        }, layer);
+        title.textContent = fitLaneName(lane.name, grosor);
+        el('title', {}, title).textContent = `${lane.name} · doble clic para renombrar`;
+        // Asidero de redimensión: franja fina en el borde derecho de la cabecera.
+        const gripX = pos + grosor - LANE_GRIP;
+        const grip = el('rect', {
+          x: gripX, y: 0, width: LANE_GRIP, height: LANE_HEADER, class: 'lane-grip',
+          ...attrs, style: 'cursor: ew-resize',
+        }, layer);
+        el('title', {}, grip).textContent = 'Arrastra para cambiar el ancho del carril';
+        for (const dx of [-3, 3]) {
+          el('line', {
+            x1: gripX + LANE_GRIP / 2 + dx, y1: LANE_HEADER / 2 - 7,
+            x2: gripX + LANE_GRIP / 2 + dx, y2: LANE_HEADER / 2 + 7,
+            class: 'lane-grip-mark', ...attrs,
+          }, layer);
+        }
+      } else {
+        el('rect', {
+          x: -4000, y: pos, width: 12000, height: grosor,
+          class: `lane-band${i % 2 ? ' alt' : ''}`,
+        }, layer);
+        el('rect', { x: 0, y: pos, width: LANE_HEADER, height: grosor, class: 'lane-head' }, layer);
+        // El actor va girado 90º, centrado en la barra y recortado a su alto.
+        const cx = LANE_HEADER / 2;
+        const cy = pos + (grosor - LANE_GRIP) / 2;
+        const title = el('text', {
+          x: cx, y: cy, class: `lane-title${active ? ' dragging' : ''}`,
+          'data-lane-title': i, transform: `rotate(-90 ${cx} ${cy})`,
+        }, layer);
+        title.textContent = fitLaneName(lane.name, grosor);
+        el('title', {}, title).textContent = `${lane.name} · doble clic para renombrar`;
+        // Asidero de redimensión: franja fina en el borde inferior de la barra.
+        const gripY = pos + grosor - LANE_GRIP;
+        const grip = el('rect', {
+          x: 0, y: gripY, width: LANE_HEADER, height: LANE_GRIP, class: 'lane-grip',
+          ...attrs, style: 'cursor: ns-resize',
+        }, layer);
+        el('title', {}, grip).textContent = 'Arrastra para cambiar el alto del carril';
+        for (const dy of [-3, 3]) {
+          el('line', {
+            x1: cx - 7, y1: gripY + LANE_GRIP / 2 + dy, x2: cx + 7, y2: gripY + LANE_GRIP / 2 + dy,
+            class: 'lane-grip-mark', ...attrs,
+          }, layer);
+        }
       }
-      y += h;
+      pos += grosor;
     });
   }
 
@@ -574,7 +607,8 @@ export class Renderer {
  */
 refresh(d, state) {
     this.ports = buildPorts(d);
-    const firma = `${d.lanes.map((l) => `${l.id}:${l.height}`).join('|')}#${state.selectedLane}`;
+    const vertical = isVerticalLanes(d);
+    const firma = `${vertical ? 'v' : 'h'}#${d.lanes.map((l) => `${l.id}:${l.height}`).join('|')}#${state.selectedLane}`;
     if (firma !== this.laneFirma) this.renderLanes(d, state);
     this.renderEdges(d, state);
     this.renderNodes(d, state);

@@ -239,6 +239,10 @@ export function createDiagram(patch = {}) {
   return {
     version: 1,
     name: 'Diagrama de actividades',
+    // Los carriles son bandas horizontales (una fila por actor) salvo que el
+    // diagrama se ponga en vertical (una columna por actor). `lane.height` es
+    // siempre el grosor de la banda: el alto en horizontal y el ancho en vertical.
+    laneOrientation: 'horizontal',
     lanes: [],
     nodes: [],
     edges: [],
@@ -336,53 +340,78 @@ export function bounds(d) {
   return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
 }
 
-/** Altura total ocupada por los carriles (0 si no hay). */
+/** ¿Los carriles son columnas verticales? */
+export function isVerticalLanes(d) {
+  return d?.laneOrientation === 'vertical';
+}
+
+/**
+ * Coordenada de un nodo en el eje de los carriles: su `y` cuando las bandas son
+ * horizontales y su `x` cuando son verticales. Es lo que decide a qué carril
+ * pertenece.
+ */
+export function laneCoord(d, node) {
+  return isVerticalLanes(d) ? node.x + node.w / 2 : node.y + node.h / 2;
+}
+
+/** Grosor total ocupado por los carriles (0 si no hay). */
 export function lanesHeight(d) {
   return d.lanes.reduce((s, l) => s + l.height, 0);
 }
 
-export function laneIndexAt(d, y) {
+/**
+ * Carril que cae en la coordenada indicada del eje de carriles (la `y` en
+ * horizontal, la `x` en vertical).
+ */
+export function laneIndexAt(d, coord) {
   let acc = 0;
   for (let i = 0; i < d.lanes.length; i += 1) {
     acc += d.lanes[i].height;
-    if (y < acc) return i;
+    if (coord < acc) return i;
   }
   return d.lanes.length ? d.lanes.length - 1 : -1;
 }
 
-/** Asigna cada nodo al carril según su posición vertical. */
+/** Asigna cada nodo al carril según su posición en el eje de carriles. */
 export function assignLanes(d) {
   if (!d.lanes.length) return;
-  for (const n of d.nodes) n.lane = laneIndexAt(d, n.y + n.h / 2);
+  for (const n of d.nodes) n.lane = laneIndexAt(d, laneCoord(d, n));
 }
 
 /**
- * Altura mínima de un carril: la banda no puede quedar más baja que el nodo
- * más alto que contiene (más un margen para que no quede pegado al borde).
+ * Grosor mínimo de un carril: la banda no puede quedar más estrecha que el nodo
+ * más grueso que contiene (más un margen para que no quede pegado al borde).
+ * En vertical se mide el ancho de los nodos; en horizontal, su alto.
  * Es lo que evita que al encoger el carril sus nodos se salgan de la banda.
  * @param index carril a medir
  * @param min por debajo de este valor nunca se encoge
  */
 export function laneMinHeight(d, index, min = 80) {
   if (index < 0 || index >= d.lanes.length) return min;
-  const lane = d.lanes[index];
-  let alto = 0;
-  for (const n of d.nodes) if (n.lane === index) alto = Math.max(alto, n.h);
-  return Math.max(min, alto + LANE_PAD * 2);
+  const vertical = isVerticalLanes(d);
+  let grosor = 0;
+  for (const n of d.nodes) {
+    if (n.lane === index) grosor = Math.max(grosor, vertical ? n.w : n.h);
+  }
+  return Math.max(min, grosor + LANE_PAD * 2);
 }
 
 /**
- * Mantiene los nodos dentro de su carril cuando cambia la altura de uno: los de
+ * Mantiene los nodos dentro de su carril cuando cambia el grosor de uno: los de
  * los carriles posteriores se desplazan el mismo delta y los del propio carril
  * se quedan donde están, sin salirse de la banda. `n.lane` es explícito y no se
  * recalcula por posición.
- * @param fromIndex carril cuyo borde inferior se ha movido `delta` px
+ * @param fromIndex carril cuyo borde final se ha movido `delta` px
  */
 export function shiftLanes(d, fromIndex, delta) {
   if (!delta || fromIndex < 0 || fromIndex >= d.lanes.length) return;
+  const vertical = isVerticalLanes(d);
   for (const n of d.nodes) {
     if (!Number.isInteger(n.lane) || n.lane < fromIndex) continue;
-    if (n.lane > fromIndex) n.y += delta;
+    if (n.lane > fromIndex) {
+      if (vertical) n.x += delta;
+      else n.y += delta;
+    }
     clampToLane(d, n);
   }
 }
@@ -397,14 +426,16 @@ export function laneTop(d, index) {
 function clampToLane(d, n) {
   if (!Number.isInteger(n.lane) || n.lane < 0 || n.lane >= d.lanes.length) return;
   const top = laneTop(d, n.lane);
-  const bottom = top + d.lanes[n.lane].height;
-  n.y = Math.max(top, Math.min(n.y, Math.max(top, bottom - n.h)));
+  const end = top + d.lanes[n.lane].height;
+  if (isVerticalLanes(d)) n.x = Math.max(top, Math.min(n.x, Math.max(top, end - n.w)));
+  else n.y = Math.max(top, Math.min(n.y, Math.max(top, end - n.h)));
 }
 
-/** Intercambia un carril con el de arriba o el de abajo y mueve sus nodos. */
+/** Intercambia un carril con el de antes o el de después y mueve sus nodos. */
 export function swapLanes(d, index, dir) {
   const j = index + dir;
   if (index < 0 || index >= d.lanes.length || j < 0 || j >= d.lanes.length) return false;
+  const vertical = isVerticalLanes(d);
   const antes = d.lanes.map((_, i) => laneTop(d, i));
   const previo = new Map(d.nodes.map((n) => [n.id, n.lane]));
   [d.lanes[index], d.lanes[j]] = [d.lanes[j], d.lanes[index]];
@@ -417,29 +448,76 @@ export function swapLanes(d, index, dir) {
   for (const n of d.nodes) {
     const prev = previo.get(n.id);
     if (!Number.isInteger(prev) || !Number.isInteger(n.lane)) continue;
-    n.y += despues[n.lane] - antes[prev];
+    const delta = despues[n.lane] - antes[prev];
+    if (vertical) n.x += delta;
+    else n.y += delta;
     clampToLane(d, n);
   }
   return true;
 }
 
 /**
- * Elimina un carril: sus nodos pasan al de arriba (sin moverse) y los de los
- * carriles posteriores suben y renumeran.
+ * Elimina un carril: sus nodos pasan al de antes (sin moverse) y los de los
+ * carriles posteriores retroceden y renumeran.
  */
 export function removeLaneAt(d, index) {
   if (index < 0 || index >= d.lanes.length) return false;
+  const vertical = isVerticalLanes(d);
   const h = d.lanes[index].height;
   const destino = Math.max(0, index - 1);
   for (const n of d.nodes) {
     if (n.lane === index) n.lane = destino;
     else if (Number.isInteger(n.lane) && n.lane > index) {
       n.lane -= 1;
-      n.y -= h;
+      if (vertical) n.x -= h;
+      else n.y -= h;
     }
   }
   d.lanes.splice(index, 1);
   for (const n of d.nodes) clampToLane(d, n);
+  return true;
+}
+
+/** Lado equivalente al girar el diagrama 90° (transponer x e y). */
+const SIDE_TRANSPUESTO = { left: 'top', right: 'bottom', top: 'left', bottom: 'right' };
+
+/**
+ * Cambia los carriles de horizontales a verticales (o al revés) **transponiendo
+ * todo el diagrama**: cada nodo conserva su carril y el flujo se lee en el nuevo
+ * eje. La operación es simétrica: llamarla dos veces deja el diagrama como estaba.
+ *
+ * - El centro de cada nodo pasa de `(x, y)` a `(y, x)`; las figuras no giran
+ *   salvo las orientables (fork/join/tiempo), que sí cambian de orientación
+ *   para que su cara plana siga mirando al flujo.
+ * - Las bolitas de los flujos se recolocan al lado equivalente y los puntos de
+ *   giro se transponen con el resto.
+ * - El grosor de cada carril (`lane.height`) no cambia: pasa de alto a ancho.
+ *
+ * @param orientation 'horizontal' | 'vertical'
+ * @returns true si el diagrama ha cambiado de orientación.
+ */
+export function setLaneOrientation(d, orientation) {
+  const vertical = orientation === 'vertical';
+  if (isVerticalLanes(d) === vertical) return false;
+  for (const n of d.nodes) {
+    const cx = n.x + n.w / 2;
+    const cy = n.y + n.h / 2;
+    if (isRotatable(n)) {
+      // La barra/reloj gira con el flujo; su centro se conserva al transponer.
+      n.rot = n.rot === 90 ? 0 : 90;
+      const w = n.w;
+      n.w = n.h;
+      n.h = w;
+    }
+    n.x = Math.round(cy - n.w / 2);
+    n.y = Math.round(cx - n.h / 2);
+  }
+  for (const e of d.edges) {
+    e.way = readWay(e.way).map((p) => ({ x: p.y, y: p.x }));
+    e.fromSide = SIDE_TRANSPUESTO[e.fromSide] || e.fromSide;
+    e.toSide = SIDE_TRANSPUESTO[e.toSide] || e.toSide;
+  }
+  d.laneOrientation = vertical ? 'vertical' : 'horizontal';
   return true;
 }
 
@@ -545,7 +623,7 @@ export function pasteGroup(d, clip, dx = 0, dy = 0) {
     const n = createNode(t.type, t.x + dx + (t.w || 0) / 2, t.y + dy + (t.h || 0) / 2, {
       w: t.w, h: t.h, label: t.label, note: t.note, rot: t.rot,
     });
-    n.lane = d.lanes.length ? laneIndexAt(d, n.y + n.h / 2) : null;
+    n.lane = d.lanes.length ? laneIndexAt(d, laneCoord(d, n)) : null;
     idx.set(i, n.id);
     d.nodes.push(n);
     nodes.push(n);
@@ -632,6 +710,7 @@ export function deserialize(text) {
   if (!raw || !Array.isArray(raw.nodes)) throw new Error('El archivo no contiene nodos válidos.');
   const d = createDiagram({
     name: typeof raw.name === 'string' ? raw.name : 'Diagrama importado',
+    laneOrientation: raw.laneOrientation === 'vertical' ? 'vertical' : 'horizontal',
     lanes: Array.isArray(raw.lanes) ? raw.lanes.map((l, i) => ({
       id: l.id || uid('l'),
       name: l.name || `Carril ${i + 1}`,
