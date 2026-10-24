@@ -56,6 +56,12 @@ const GRID = 8;
  * generosa a propósito, pero independiente del zoom.
  */
 const GUIDE_PX = 6;
+/**
+ * Ventana (ms) durante la que las pulsaciones seguidas de las flechas cuentan
+ * como un único movimiento: así una ráfaga se deshace de golpe y no llena el
+ * historial con un paso por cada repetición de tecla.
+ */
+const NUDGE_GROUP = 700;
 
 function svgEl(name, attrs = {}) {
   const n = document.createElementNS(NS, name);
@@ -85,6 +91,9 @@ export class Interaction {
     this.guideLayer = null;
     this.hoverAt = null;
     this.pointer = null;
+    /** Última ráfaga de flechas: ids movidos y momento del último paso. */
+    this.nudgeIds = "";
+    this.nudgeAt = 0;
     this.bind();
   }
 
@@ -148,6 +157,9 @@ export class Interaction {
   onPointerDown(e) {
     // El fantasma de inserción no debe quedarse congelado durante el gesto.
     this.clearInsertPreview();
+    // Cualquier gesto con el ratón cierra la ráfaga de flechas en curso: el
+    // siguiente desplazamiento con teclado será un paso de deshacer aparte.
+    this.nudgeIds = "";
     const target = e.target;
     const puntoCtrl = target?.dataset?.routePoint;
     const esCtrl = puntoCtrl !== undefined && this.app.tool === "route";
@@ -1330,6 +1342,38 @@ export class Interaction {
 
   /* ----------------------------- teclado ------------------------------ */
 
+  /**
+   * Desplaza los nodos seleccionados con las flechas del teclado. Respeta el
+   * carril igual que el arrastre y agrupa las pulsaciones seguidas en un solo
+   * paso de deshacer.
+   * @param {number} dx desplazamiento horizontal en unidades del mundo.
+   * @param {number} dy desplazamiento vertical en unidades del mundo.
+   * @returns {boolean} `true` si se ha movido algún nodo.
+   */
+  nudgeSelection(dx, dy) {
+    const ids = this.app.selectedNodeIds();
+    if (!ids.length) return false;
+    const clave = ids.join(",");
+    const ahora = Date.now();
+    const rafaga =
+      clave === this.nudgeIds && ahora - this.nudgeAt < NUDGE_GROUP;
+    // El historial va antes de mutar, como en el resto de operaciones. Sólo al
+    // empezar la ráfaga: las repeticiones se acumulan en el mismo paso.
+    if (!rafaga) this.app.pushHistory("Mover nodos");
+    this.nudgeIds = clave;
+    this.nudgeAt = ahora;
+    for (const id of ids) {
+      const n = nodeById(this.app.diagram, id);
+      if (!n) continue;
+      n.x += dx;
+      n.y += dy;
+      if (this.app.diagram.lanes.length)
+        n.lane = laneOf(this.app.diagram, n);
+    }
+    this.app.commit("Mover nodos");
+    return true;
+  }
+
   onKeyDown(e) {
     const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(
       document.activeElement?.tagName,
@@ -1346,11 +1390,13 @@ export class Interaction {
 
     if (mod && e.key.toLowerCase() === "z") {
       e.preventDefault();
+      this.nudgeIds = "";
       e.shiftKey ? this.app.redo() : this.app.undo();
       return;
     }
     if (mod && e.key.toLowerCase() === "y") {
       e.preventDefault();
+      this.nudgeIds = "";
       this.app.redo();
       return;
     }
@@ -1390,6 +1436,20 @@ export class Interaction {
     if (mod) return;
 
     switch (e.key) {
+      case "ArrowLeft":
+      case "ArrowRight":
+      case "ArrowUp":
+      case "ArrowDown": {
+        // Sin modificadores: 1 px por pulsación (ajuste fino); con Shift, una
+        // celda de la rejilla. Ctrl/Cmd ya se ha descartado arriba.
+        const paso = e.shiftKey ? GRID : 1;
+        const movido = this.nudgeSelection(
+          e.key === "ArrowLeft" ? -paso : e.key === "ArrowRight" ? paso : 0,
+          e.key === "ArrowUp" ? -paso : e.key === "ArrowDown" ? paso : 0,
+        );
+        if (movido) e.preventDefault();
+        break;
+      }
       case "Delete":
       case "Backspace":
         e.preventDefault();

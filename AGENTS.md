@@ -89,7 +89,7 @@ Dependencias: `routing.js` no importa nada del DOM salvo constantes; `model.js` 
 ## Atajos (definidos en `interact.js:onKeyDown`)
 
 Herramientas: `V` seleccionar, `S` inicio, `E` fin, `P` punto muerto, `A` acción, `D` decisión, `F` fork, `J` join, `N` nota, `O` objeto, `C` conectar, `X` eliminar.
-Otros: `Supr`/`Backspace` borrar, `Esc` cancelar, `Enter` cerrar el trazado en curso, `Espacio`/botón derecho = panear, `+`/`-`/`0` zoom, `Ctrl+Z`/`Ctrl+Shift+Z`/`Ctrl+Y` deshacer/rehacer, `Ctrl+A` seleccionar todo, `Ctrl+C`/`Ctrl+V`/`Ctrl+X` copiar/pegar/cortar, `Ctrl+D` duplicar, `Ctrl+S` guardar, `Ctrl`+clic multiselección.
+Otros: `Supr`/`Backspace` borrar, `Esc` cancelar, `Enter` cerrar el trazado en curso, flechas mover 1 px los nodos seleccionados (con `Shift`, 8 px), `Espacio`/botón derecho = panear, `+`/`-`/`0` zoom, `Ctrl+Z`/`Ctrl+Shift+Z`/`Ctrl+Y` deshacer/rehacer, `Ctrl+A` seleccionar todo, `Ctrl+C`/`Ctrl+V`/`Ctrl+X` copiar/pegar/cortar, `Ctrl+D` duplicar, `Ctrl+S` guardar, `Ctrl`+clic multiselección.
 El handler es global: respeta el guard `typing` (INPUT/TEXTAREA/SELECT) o romperás la escritura en el inspector.
 
 ## Reglas de dominio que valida `validate.js`

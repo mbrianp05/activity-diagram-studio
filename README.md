@@ -52,6 +52,7 @@ El diagrama se autoguarda en el navegador. **Guardar** descarga un `.json` y **E
 | Acción | Atajo |
 | --- | --- |
 | Seleccionar / mover | `V` |
+| Mover nodo seleccionado | `←` `↑` `→` `↓` (con `Shift`, 8 px) |
 | Inicio / Fin / Punto muerto | `S` / `E` / `P` |
 | Acción / Decisión | `A` / `D` |
 | Fork / Join | `F` / `J` |
